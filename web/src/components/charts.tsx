@@ -9,8 +9,8 @@ const C = ["#7c9cff", "#f4b860", "#7bd389", "#ef7d7d", "#b088f9"];
 
 import { fmtUsd, fmtPct } from "@/lib/fmt";
 
-export type Fmt = "usd" | "pct" | "rate";
-const F: Record<Fmt, (v: number) => string> = { usd: fmtUsd, pct: fmtPct, rate: (v) => v.toFixed(4) };
+export type Fmt = "usd" | "pct" | "rate" | "raw";
+const F: Record<Fmt, (v: number) => string> = { usd: fmtUsd, pct: fmtPct, rate: (v) => v.toFixed(4), raw: (v) => v.toLocaleString() };
 const MON = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
 const fmtDay = (d: unknown) => { const s = String(d); return `${MON[Number(s.slice(5, 7)) - 1]} ${s.slice(8, 10)}`; };
 
@@ -124,8 +124,8 @@ export function BarsPlusLine({ data, x, bar, line, fmt = "usd" }: { data: Row[];
   );
 }
 
-export function Table({ rows, cols }: { rows: Row[]; cols: { key: string; title: string; fmt?: Fmt | "raw" | "addr" }[] }) {
-  const f = (v: unknown, k?: Fmt | "raw" | "addr") =>
+export function Table({ rows, cols }: { rows: Row[]; cols: { key: string; title: string; fmt?: Fmt | "addr" }[] }) {
+  const f = (v: unknown, k?: Fmt | "addr") =>
     v == null ? "" : k === "addr" ? `${String(v).slice(0, 6)}…${String(v).slice(-4)}` : k && k !== "raw" ? F[k](Number(v)) : String(v);
   return (
     <div className="overflow-x-auto">

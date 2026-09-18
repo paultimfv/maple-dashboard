@@ -206,3 +206,150 @@ export async function topLoans() {
     GROUP BY loan ORDER BY interest_usd DESC LIMIT 15`, [OTLM_SYRUPUSDG]);
   return rows.map(num);
 }
+
+// ---- Earn depositors (Steakhouse USDG vault, ERC-4626) ----
+export async function earnDepositors() {
+  const rows = await q(`
+    WITH w AS (
+      SELECT date_trunc('week', block_time)::date AS week, owner,
+             SUM(CASE WHEN kind = 'deposit' THEN assets ELSE -assets END) AS net,
+             SUM(CASE WHEN kind = 'deposit' THEN assets END) AS deposited
+      FROM earn_flows GROUP BY 1, 2
+    ),
+    first_seen AS (SELECT owner, MIN(week) AS cohort FROM w GROUP BY owner)
+    SELECT w.week,
+           COUNT(DISTINCT w.owner) AS active_users,
+           COUNT(DISTINCT CASE WHEN f.cohort = w.week THEN w.owner END) AS new_users,
+           SUM(w.deposited) AS deposited_usd,
+           SUM(w.net) AS net_flow_usd,
+           SUM(COUNT(DISTINCT CASE WHEN f.cohort = w.week THEN w.owner END)) OVER (ORDER BY w.week) AS cumulative_users
+    FROM w JOIN first_seen f ON f.owner = w.owner
+    GROUP BY w.week ORDER BY w.week`);
+  return rows.map(num);
+}
+
+export async function earnDepositSizes() {
+  const rows = await q(`
+    SELECT COUNT(*) AS deposits, COUNT(DISTINCT owner) AS users,
+           percentile_cont(0.5) WITHIN GROUP (ORDER BY assets) AS median_deposit,
+           AVG(assets) AS avg_deposit,
+           percentile_cont(0.9) WITHIN GROUP (ORDER BY assets) AS p90_deposit
+    FROM earn_flows WHERE kind = 'deposit'`);
+  return rows.map(num)[0];
+}
+
+// ---- syrupUSDG bridge flow Ethereum <-> Robinhood (CCIP pool mints/burns), weekly ----
+export async function bridgeFlow() {
+  const rows = await q(`
+    SELECT date_trunc('week', block_time)::date AS week,
+           SUM(CASE WHEN from_addr = '0x0000000000000000000000000000000000000000' THEN amount END) AS bridged_in,
+           SUM(CASE WHEN to_addr   = '0x0000000000000000000000000000000000000000' THEN amount END) AS bridged_out,
+           SUM(CASE WHEN from_addr = '0x0000000000000000000000000000000000000000' THEN amount ELSE -amount END) AS net
+    FROM rh_transfers WHERE token = 'syrupUSDG' GROUP BY 1 ORDER BY 1`);
+  return rows.map(num);
+}
+
+// ---- SYRUP ----
+export async function syrupPrice() {
+  const rows = await q(`SELECT day, price_usd, mcap_usd, volume_usd FROM syrup_price ORDER BY day`);
+  return rows.map(num);
+}
+export async function syrupBuybacks() {
+  const rows = await q(`SELECT month, amount_usd, syrup_bought, avg_price FROM syrup_buybacks ORDER BY month`);
+  return rows.map(num);
+}
+
+// ---- Revenue bridge: syrupUSDG monthly Maple revenue -> MIP-021 tier -> implied buyback ----
+// MIP-021: 10% of monthly revenue < $1.5M, 20% $1.5–2M, 30% > $2M (on that month's total protocol revenue).
+// Protocol-wide revenue needs all pools; here we show syrupUSDG's contribution and the share of Maple's on-chain fees it represents.
+export async function revenueBridge() {
+  const rows = await q(`
+    WITH m AS (
+      SELECT date_trunc('month', block_time)::date AS month,
+             SUM(CASE WHEN otlm = $1 THEN platform_mgmt_fee + platform_service_fee END) AS syrupusdg_revenue,
+             SUM(platform_mgmt_fee + platform_service_fee) AS onchain_revenue_all_pools,
+             SUM(CASE WHEN otlm = $1 THEN net_interest + delegate_mgmt_fee + delegate_service_fee + platform_mgmt_fee + platform_service_fee END) AS syrupusdg_gross_interest
+      FROM claimed_funds WHERE otlm <> $2 AND block_time >= '2026-05-01' GROUP BY 1
+    )
+    SELECT month, syrupusdg_revenue, onchain_revenue_all_pools, syrupusdg_gross_interest,
+           syrupusdg_revenue / NULLIF(onchain_revenue_all_pools, 0) AS syrupusdg_share_of_onchain_rev,
+           CASE WHEN onchain_revenue_all_pools > 2000000 THEN 0.30 WHEN onchain_revenue_all_pools >= 1500000 THEN 0.20 ELSE 0.10 END AS mip21_tier,
+           onchain_revenue_all_pools * CASE WHEN onchain_revenue_all_pools > 2000000 THEN 0.30 WHEN onchain_revenue_all_pools >= 1500000 THEN 0.20 ELSE 0.10 END AS implied_buyback_onchain_only
+    FROM m ORDER BY month`, [OTLM_SYRUPUSDG, WETH_OTLM]);
+  return rows.map(num);
+}
+
+// ---- Robinhood Chain activity (sampled blocks, scaled to full day) ----
+export async function chainActivity() {
+  const rows = await q(`
+    SELECT s.day,
+           d.n_blocks,
+           d.sampled,
+           SUM(s.txs) * d.n_blocks / NULLIF(d.sampled, 0)                    AS txs_est,
+           SUM(s.unique_from) * d.n_blocks / NULLIF(d.sampled, 0)            AS active_addr_est,   -- upper bound (per-block uniques)
+           SUM(s.gas_used) * d.n_blocks / NULLIF(d.sampled, 0)               AS gas_est,
+           SUM(s.fees_eth) * d.n_blocks / NULLIF(d.sampled, 0)               AS fees_eth_est,
+           SUM(s.fees_eth) * d.n_blocks / NULLIF(d.sampled, 0) * e.price_usd AS fees_usd_est,
+           AVG(s.base_fee) / 1e9                                             AS avg_base_fee_gwei
+    FROM rh_block_samples s
+    JOIN rh_day_blocks d ON d.day = s.day
+    LEFT JOIN eth_price e ON e.day = s.day
+    WHERE d.sampled >= 50
+    GROUP BY s.day, d.n_blocks, d.sampled, e.price_usd ORDER BY s.day`);
+  return rows.map(num);
+}
+
+// meme / launchpad share of activity: txs whose "to" is a launchpad contract, by week
+export async function memeShare() {
+  const rows = await q(`
+    WITH t AS (
+      SELECT date_trunc('week', s.day)::date AS week,
+             CASE WHEN l.kind = 'launchpad_deployer' THEN 'launchpad'
+                  WHEN l.kind = 'dex' THEN 'dex'
+                  ELSE 'other' END AS bucket,
+             SUM(b.txs) AS txs, SUM(b.gas_used) AS gas, SUM(b.fees_eth) AS fees
+      FROM rh_block_to b JOIN rh_block_samples s ON s.block_number = b.block_number
+      LEFT JOIN rh_labels l ON l.address = b.to_addr
+      GROUP BY 1, 2
+    )
+    SELECT week, bucket, txs, gas, fees,
+           txs::numeric / NULLIF(SUM(txs) OVER (PARTITION BY week), 0) AS tx_share,
+           gas::numeric / NULLIF(SUM(gas) OVER (PARTITION BY week), 0) AS gas_share,
+           fees / NULLIF(SUM(fees) OVER (PARTITION BY week), 0) AS fee_share
+    FROM t ORDER BY week, bucket`);
+  return rows.map(num);
+}
+
+// top contracts by gas (sampled), last 30 days — for labeling and the "who pays the gas" table
+export async function topContracts() {
+  const rows = await q(`
+    SELECT b.to_addr, COALESCE(l.label, '') AS label, COALESCE(l.kind, '') AS kind,
+           SUM(b.txs) AS txs, SUM(b.gas_used) AS gas, SUM(b.fees_eth) AS fees_eth,
+           SUM(b.gas_used)::numeric / NULLIF(SUM(SUM(b.gas_used)) OVER (), 0) AS gas_share
+    FROM rh_block_to b JOIN rh_block_samples s ON s.block_number = b.block_number
+    LEFT JOIN rh_labels l ON l.address = b.to_addr
+    WHERE s.day >= CURRENT_DATE - 30
+    GROUP BY 1, 2, 3 ORDER BY gas DESC LIMIT 20`);
+  return rows.map(num);
+}
+
+// chain economics: L2 fee revenue (est) vs L1 posting cost, weekly
+export async function chainEconomics() {
+  const rows = await q(`
+    WITH l2 AS (
+      SELECT date_trunc('week', s.day)::date AS week,
+             SUM(s.fees_eth * d.n_blocks / NULLIF(d.sampled, 0)) AS l2_fees_eth,
+             SUM(s.fees_eth * d.n_blocks / NULLIF(d.sampled, 0) * e.price_usd) AS l2_fees_usd
+      FROM rh_block_samples s JOIN rh_day_blocks d ON d.day = s.day LEFT JOIN eth_price e ON e.day = s.day
+      WHERE d.sampled >= 50 GROUP BY 1
+    ),
+    l1 AS (
+      SELECT date_trunc('week', b.block_time)::date AS week, SUM(b.fee_eth) AS l1_cost_eth, SUM(b.fee_eth * e.price_usd) AS l1_cost_usd, COUNT(*) AS batches
+      FROM rh_l1_batches b LEFT JOIN eth_price e ON e.day = b.block_time::date GROUP BY 1
+    )
+    SELECT COALESCE(l2.week, l1.week) AS week, l2.l2_fees_eth, l2.l2_fees_usd, l1.l1_cost_eth, l1.l1_cost_usd, l1.batches,
+           l2.l2_fees_usd - COALESCE(l1.l1_cost_usd, 0) AS net_usd,
+           (l2.l2_fees_usd - COALESCE(l1.l1_cost_usd, 0)) / NULLIF(l2.l2_fees_usd, 0) AS margin
+    FROM l2 FULL OUTER JOIN l1 ON l1.week = l2.week ORDER BY 1`);
+  return rows.map(num);
+}
