@@ -281,19 +281,19 @@ export async function revenueBridge() {
 
 
 // ---- Robinhood Chain macro (DeFiLlama, source-labeled) ----
+const FINANCE_CATS = `'Lending','RWA','Yield','Yield Aggregator','Risk Curators','Onchain Capital Allocator','Uncollateralized Lending','Payments'`;
 export async function llamaChain() {
   const rows = await q(`SELECT day, tvl_usd, fees_usd, revenue_usd, dex_volume_usd, sequencer_fees_usd FROM llama_chain_daily WHERE day >= '2026-05-01' ORDER BY day`);
   return rows.map(num);
 }
 
-// chain fees by category bucket, weekly: speculation (launchpad/meme/bots) vs finance (lending/RWA/yield) vs other
+// chain fees by category bucket, weekly: speculation (dex/launchpad/meme/bots/perps) vs finance (lending/RWA/yield) vs chain vs other
 export async function llamaFeesByBucket() {
   const rows = await q(`
     WITH b AS (
       SELECT date_trunc('week', day)::date AS week,
-             CASE WHEN category IN ('Launchpad','Meme','Telegram Bot','Gamified Mining','Luck Games','Volume Boosting','Trading App') THEN 'speculation'
-                  WHEN category IN ('Lending','RWA','Yield','Yield Aggregator','Risk Curators','Onchain Capital Allocator','Uncollateralized Lending','Payments') THEN 'finance'
-                  WHEN category IN ('Dexs','DEX Aggregator','Derivatives','Prediction Market') THEN 'trading'
+             CASE WHEN category IN ('Dexs','DEX Aggregator','Derivatives','Prediction Market','Launchpad','Meme','Telegram Bot','Gamified Mining','Luck Games','Volume Boosting','Trading App') THEN 'speculation'
+                  WHEN category IN (${FINANCE_CATS}) THEN 'finance'
                   WHEN category = 'Chain' THEN 'chain'
                   ELSE 'other' END AS bucket,
              SUM(value_usd) AS fees_usd
@@ -305,22 +305,89 @@ export async function llamaFeesByBucket() {
   return rows.map(num);
 }
 
-export async function llamaTopProtocols() {
+// lending / earn products only (the Morpho / Steakhouse / Maple side of the chain), last 7 days
+export async function llamaFinanceProtocols() {
   const rows = await q(`
     SELECT protocol, category,
            SUM(CASE WHEN metric='fees' THEN value_usd END) AS fees_7d,
            SUM(CASE WHEN metric='revenue' THEN value_usd END) AS revenue_7d,
            SUM(CASE WHEN metric='fees' THEN value_usd END) / NULLIF(SUM(SUM(CASE WHEN metric='fees' THEN value_usd END)) OVER (), 0) AS fee_share
-    FROM llama_protocol_daily WHERE day >= CURRENT_DATE - 7
-    GROUP BY 1, 2 ORDER BY fees_7d DESC NULLS LAST LIMIT 15`);
+    FROM llama_protocol_daily WHERE day >= CURRENT_DATE - 7 AND category IN (${FINANCE_CATS})
+    GROUP BY 1, 2 ORDER BY fees_7d DESC NULLS LAST LIMIT 10`);
   return rows.map(num);
 }
 
-// Maple-relevant protocols on the chain (comps within the chain): Morpho Blue, Steakhouse, Pons
-export async function llamaMapleContext() {
+// lending / earn protocol fees, weekly, by protocol (stacked columns on the page)
+export async function llamaFinanceWeekly() {
   const rows = await q(`
-    SELECT day, protocol, SUM(CASE WHEN metric='fees' THEN value_usd END) AS fees_usd, SUM(CASE WHEN metric='revenue' THEN value_usd END) AS revenue_usd
-    FROM llama_protocol_daily WHERE protocol IN ('Morpho Blue','Steakhouse Financial','Pons V2','Pons V1') AND day >= '2026-06-01'
-    GROUP BY 1, 2 ORDER BY 1, 2`);
+    SELECT date_trunc('week', day)::date AS week, protocol, SUM(value_usd) AS fees_usd
+    FROM llama_protocol_daily WHERE metric = 'fees' AND category IN (${FINANCE_CATS}) AND day >= '2026-05-01'
+    GROUP BY 1, 2 HAVING SUM(value_usd) > 0 ORDER BY 1, 2`);
+  return rows.map(num);
+}
+
+// ---- Tokenization / RWA on Robinhood Chain ----
+// Robinhood stock tokens: supply (shares) by token, latest
+export async function stockTokens() {
+  const rows = await q(`
+    SELECT t.symbol, t.name,
+           SUM(CASE WHEN f.kind = 'mint' THEN f.amount ELSE -f.amount END) AS shares_outstanding,
+           SUM(CASE WHEN f.kind = 'mint' THEN f.amount END) AS minted, SUM(CASE WHEN f.kind = 'burn' THEN f.amount END) AS burned,
+           COUNT(*) AS events, MIN(f.block_time)::date AS first_mint
+    FROM stock_token_flows f JOIN rh_tokens t ON t.address = f.token
+    GROUP BY 1, 2 HAVING SUM(CASE WHEN f.kind = 'mint' THEN f.amount ELSE -f.amount END) > 0
+    ORDER BY shares_outstanding DESC`);
+  return rows.map(num);
+}
+export async function stockTokensWeekly() {
+  const rows = await q(`
+    WITH w AS (
+      SELECT date_trunc('week', block_time)::date AS week,
+             SUM(CASE WHEN kind = 'mint' THEN amount END) AS minted, SUM(CASE WHEN kind = 'burn' THEN amount END) AS burned,
+             COUNT(DISTINCT token) AS active_tokens
+      FROM stock_token_flows GROUP BY 1
+    )
+    SELECT week, minted, burned, active_tokens,
+           SUM(COALESCE(minted,0) - COALESCE(burned,0)) OVER (ORDER BY week) AS cumulative_shares,
+           (SELECT COUNT(DISTINCT token) FROM stock_token_flows s WHERE s.block_time < w.week + 7) AS tokens_launched
+    FROM w ORDER BY week`);
+  return rows.map(num);
+}
+// Credit against tokenized stocks: USDG borrowed in Morpho markets whose collateral is a Robinhood stock token
+export async function stockCredit() {
+  const rows = await q(`
+    SELECT m.collateral,
+           SUM(CASE WHEN c.kind = 'borrow' THEN c.amount WHEN c.kind = 'repay' THEN -c.amount END) AS net_borrowed_usdg,
+           SUM(CASE WHEN c.kind = 'borrow' THEN c.amount END) AS gross_borrowed_usdg,
+           SUM(CASE WHEN c.kind = 'supply_collateral' THEN c.amount WHEN c.kind = 'withdraw_collateral' THEN -c.amount END) AS collateral_shares,
+           COUNT(DISTINCT CASE WHEN c.kind = 'borrow' THEN c.on_behalf END) AS borrowers,
+           COUNT(DISTINCT m.market_id) AS markets
+    FROM morpho_credit c JOIN morpho_markets m ON m.market_id = c.market_id JOIN rh_tokens t ON t.address = m.collateral_token
+    WHERE t.name LIKE '%• Robinhood Token'
+    GROUP BY 1 ORDER BY net_borrowed_usdg DESC NULLS LAST LIMIT 15`);
+  return rows.map(num);
+}
+export async function stockCreditWeekly() {
+  const rows = await q(`
+    WITH w AS (
+      SELECT date_trunc('week', c.block_time)::date AS week,
+             CASE WHEN t.name LIKE '%• Robinhood Token' THEN 'tokenized stocks'
+                  WHEN m.collateral IN ('syrupUSDG','USDe','spUSDG','mGLO') THEN 'yield / credit tokens'
+                  ELSE 'other' END AS bucket,
+             SUM(CASE WHEN c.kind = 'borrow' THEN c.amount WHEN c.kind = 'repay' THEN -c.amount END) AS net
+      FROM morpho_credit c JOIN morpho_markets m ON m.market_id = c.market_id LEFT JOIN rh_tokens t ON t.address = m.collateral_token
+      WHERE c.kind IN ('borrow', 'repay') GROUP BY 1, 2
+    )
+    SELECT week, bucket, GREATEST(SUM(net) OVER (PARTITION BY bucket ORDER BY week), 0) AS borrowed_outstanding_usdg FROM w ORDER BY week, bucket`);
+  return rows.map(num);
+}
+// Earn vault allocation now includes mGLO (Midas) — the "RWA credit" collaterals
+export async function earnRwaShare() {
+  const rows = await q(`
+    WITH cum AS (
+      SELECT m.collateral, SUM(CASE WHEN f.kind = 'supply' THEN f.assets ELSE -f.assets END) AS a
+      FROM morpho_flows f JOIN morpho_markets m ON m.market_id = f.market_id WHERE f.on_behalf = $1 GROUP BY 1
+    )
+    SELECT collateral, GREATEST(a, 0) AS allocated_usdg, GREATEST(a, 0) / NULLIF(SUM(GREATEST(a, 0)) OVER (), 0) AS share FROM cum ORDER BY a DESC`, [EARN_VAULT]);
   return rows.map(num);
 }

@@ -39,8 +39,8 @@ export function Card({ title, children }: { title: string; children: React.React
   );
 }
 
-/** Stacked area by a category column (pivots long → wide). */
-export function StackedArea({ data, x, y, group, fmt = "usd" }: { data: Row[]; x: string; y: string; group: string; fmt?: Fmt }) {
+/** long → wide pivot for the stacked-by-category charts */
+function pivot(data: Row[], x: string, y: string, group: string) {
   const keys = Array.from(new Set(data.map((r) => String(r[group]))));
   const byX = new Map<string, Row>();
   for (const r of data) {
@@ -48,7 +48,12 @@ export function StackedArea({ data, x, y, group, fmt = "usd" }: { data: Row[]; x
     if (!byX.has(k)) byX.set(k, { [x]: k });
     byX.get(k)![String(r[group])] = Number(r[y]);
   }
-  const wide = Array.from(byX.values());
+  return { keys, wide: Array.from(byX.values()) };
+}
+
+/** Stacked area by a category column — for shares / % only (sums to 100%). */
+export function StackedArea({ data, x, y, group, fmt = "pct" }: { data: Row[]; x: string; y: string; group: string; fmt?: Fmt }) {
+  const { keys, wide } = pivot(data, x, y, group);
   return (
     <ResponsiveContainer>
       <AreaChart data={wide}>
@@ -59,6 +64,23 @@ export function StackedArea({ data, x, y, group, fmt = "usd" }: { data: Row[]; x
         <Legend />
         {keys.map((k, i) => <Area key={k} dataKey={k} stackId="1" stroke={C[i % C.length]} fill={C[i % C.length]} fillOpacity={0.35} />)}
       </AreaChart>
+    </ResponsiveContainer>
+  );
+}
+
+/** Stacked columns by a category column — for absolute amounts. */
+export function StackedColumns({ data, x, y, group, fmt = "usd" }: { data: Row[]; x: string; y: string; group: string; fmt?: Fmt }) {
+  const { keys, wide } = pivot(data, x, y, group);
+  return (
+    <ResponsiveContainer>
+      <BarChart data={wide}>
+        {grid}
+        <XAxis dataKey={x} tickFormatter={fmtDay} {...axis} />
+        <YAxis tickFormatter={F[fmt]} width={64} {...axis} />
+        {tip(F[fmt])}
+        <Legend />
+        {keys.map((k, i) => <Bar key={k} dataKey={k} stackId="1" fill={C[i % C.length]} />)}
+      </BarChart>
     </ResponsiveContainer>
   );
 }
