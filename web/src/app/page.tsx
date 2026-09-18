@@ -1,4 +1,4 @@
-import { rhAum, earnAllocation, earnShare, interestWeekly, loansWeekly, shareOfRhTvl, shareOfUsdg, poolState, utilization, topLoans, earnDepositors, earnDepositSizes, bridgeFlow, syrupPrice, syrupBuybacks, revenueBridge, chainActivity, memeShare, topContracts, chainEconomics } from "@/lib/queries";
+import { rhAum, earnAllocation, earnShare, interestWeekly, loansWeekly, shareOfRhTvl, shareOfUsdg, poolState, utilization, topLoans, earnDepositors, earnDepositSizes, bridgeFlow, syrupPrice, syrupBuybacks, revenueBridge, llamaChain, llamaFeesByBucket, llamaTopProtocols, llamaMapleContext } from "@/lib/queries";
 import { Counter, Card, StackedArea, SimpleArea, SimpleLine, StackedBars, BarsPlusLine, Table } from "@/components/charts";
 import { fmtUsd, fmtPct } from "@/lib/fmt";
 
@@ -11,11 +11,11 @@ export default async function Page() {
     rhAum(), earnAllocation(), earnShare(), interestWeekly(), loansWeekly(), shareOfRhTvl(), shareOfUsdg(), poolState(), utilization(), topLoans(),
     earnDepositors(), earnDepositSizes(), bridgeFlow(), syrupPrice(), syrupBuybacks(), revenueBridge(),
   ]);
-  const [act, meme, topc, econ] = await Promise.all([chainActivity(), memeShare(), topContracts(), chainEconomics()]);
-  const ac = last(act);
-  const ec = last(econ);
-  const lastWeekMeme = meme.filter((r) => r.week === last(meme)?.week);
-  const memeTx = lastWeekMeme.find((r) => r.bucket === "launchpad");
+  const [chain, buckets, topp, mctx] = await Promise.all([llamaChain(), llamaFeesByBucket(), llamaTopProtocols(), llamaMapleContext()]);
+  const ch = [...chain].reverse().find((r) => r.fees_usd != null);
+  const lastWk = last(buckets)?.week;
+  const spec = buckets.find((r) => r.week === lastWk && r.bucket === "speculation");
+  const fin = buckets.find((r) => r.week === lastWk && r.bucket === "finance");
   const sp = last(syrup);
   const rv = last(rev);
   const bbTotal = buybacks.reduce((s, r) => s + Number(r.amount_usd), 0);
@@ -41,26 +41,27 @@ export default async function Page() {
 
       <section className="space-y-4">
         <h2 className="text-lg font-medium">Robinhood Chain</h2>
-        <p className="text-xs text-neutral-500">Sampled: 200 blocks per UTC day with full receipts, scaled to the day&apos;s block count. Active addresses = sum of per-block unique senders (upper bound). Launchpad = tx sent directly to one of {`~130`} known launchpad contracts (community classifier); DEX-router trades of meme tokens land in &quot;other&quot; until labeled.</p>
+        <p className="text-xs text-neutral-500">Source: DeFiLlama (chain TVL, protocol fees/revenue, DEX volume, per-protocol breakdown by category). Pulled daily into the same database; not self-indexed.</p>
         <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
-          <Counter label="Transactions / day (est)" value={Number(ac?.txs_est ?? 0).toLocaleString(undefined, { maximumFractionDigits: 0 })} sub={`${Number(ac?.n_blocks ?? 0).toLocaleString()} blocks · ${String(ac?.day ?? "")}`} />
-          <Counter label="Fees / day (est)" value={fmtUsd(Number(ac?.fees_usd_est ?? 0))} sub={`${Number(ac?.fees_eth_est ?? 0).toFixed(2)} ETH · base ${Number(ac?.avg_base_fee_gwei ?? 0).toFixed(3)} gwei`} />
-          <Counter label="Launchpad share of txs, last week" value={fmtPct(Number(memeTx?.tx_share ?? 0))} sub={`${fmtPct(Number(memeTx?.gas_share ?? 0))} of gas`} />
-          <Counter label="Sequencer margin, last week" value={fmtPct(Number(ec?.margin ?? 0))} sub={`L2 fees ${fmtUsd(Number(ec?.l2_fees_usd ?? 0))} − L1 cost ${fmtUsd(Number(ec?.l1_cost_usd ?? 0))}`} />
+          <Counter label="Chain TVL" value={fmtUsd(Number(last(chain)?.tvl_usd ?? 0))} />
+          <Counter label="Protocol fees / day" value={fmtUsd(Number(ch?.fees_usd ?? 0))} sub={`revenue ${fmtUsd(Number(ch?.revenue_usd ?? 0))}`} />
+          <Counter label="DEX volume / day" value={fmtUsd(Number(ch?.dex_volume_usd ?? 0))} />
+          <Counter label="Speculation share of fees, last week" value={fmtPct(Number(spec?.share ?? 0))} sub={`finance (lending/RWA/yield) ${fmtPct(Number(fin?.share ?? 0))}`} />
         </div>
         <div className="grid gap-4 md:grid-cols-2">
-          <Card title="Transactions per day (est)"><SimpleArea data={act} x="day" y="txs_est" fmt="raw" /></Card>
-          <Card title="Fees per day, USD (est)"><SimpleArea data={act} x="day" y="fees_usd_est" /></Card>
-          <Card title="Share of transactions: launchpad vs other, weekly"><StackedArea data={meme} x="week" y="tx_share" group="bucket" fmt="pct" /></Card>
-          <Card title="Share of gas: launchpad vs other, weekly"><StackedArea data={meme} x="week" y="gas_share" group="bucket" fmt="pct" /></Card>
-          <Card title="Chain economics, weekly: L2 fees vs L1 posting cost"><StackedBars data={econ} x="week" ys={["l2_fees_usd", "l1_cost_usd"]} /></Card>
-          <Card title="Net sequencer revenue, weekly (est)"><StackedBars data={econ} x="week" ys={["net_usd"]} /></Card>
+          <Card title="Chain TVL"><SimpleArea data={chain} x="day" y="tvl_usd" /></Card>
+          <Card title="Protocol fees per day (all protocols on chain)"><SimpleArea data={chain} x="day" y="fees_usd" /></Card>
+          <Card title="Fee share by bucket, weekly"><StackedArea data={buckets} x="week" y="share" group="bucket" fmt="pct" /></Card>
+          <Card title="Fees by bucket, weekly (USD)"><StackedArea data={buckets} x="week" y="fees_usd" group="bucket" /></Card>
+          <Card title="DEX volume per day"><SimpleArea data={chain} x="day" y="dex_volume_usd" /></Card>
+          <Card title="Sequencer (gas) fees per day — Robinhood&apos;s own take"><SimpleArea data={chain} x="day" y="sequencer_fees_usd" /></Card>
+          <Card title="Fees: Pons vs Morpho Blue vs Steakhouse, daily"><StackedArea data={mctx} x="day" y="fees_usd" group="protocol" /></Card>
         </div>
         <div className="rounded-lg border border-neutral-800 bg-neutral-900/60 p-4">
-          <div className="mb-3 text-sm font-medium text-neutral-300">Top contracts by gas, last 30 days (sampled)</div>
-          <Table rows={topc} cols={[
-            { key: "to_addr", title: "contract", fmt: "addr" }, { key: "label", title: "label" }, { key: "txs", title: "txs", fmt: "raw" },
-            { key: "gas_share", title: "gas share", fmt: "pct" }, { key: "fees_eth", title: "fees (ETH)", fmt: "rate" },
+          <div className="mb-3 text-sm font-medium text-neutral-300">Top protocols by fees, last 7 days</div>
+          <Table rows={topp} cols={[
+            { key: "protocol", title: "protocol" }, { key: "category", title: "category" },
+            { key: "fees_7d", title: "fees 7d", fmt: "usd" }, { key: "revenue_7d", title: "revenue 7d", fmt: "usd" }, { key: "fee_share", title: "share", fmt: "pct" },
           ]} />
         </div>
       </section>

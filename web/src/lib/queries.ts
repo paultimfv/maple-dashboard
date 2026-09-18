@@ -279,77 +279,48 @@ export async function revenueBridge() {
   return rows.map(num);
 }
 
-// ---- Robinhood Chain activity (sampled blocks, scaled to full day) ----
-export async function chainActivity() {
-  const rows = await q(`
-    SELECT s.day,
-           d.n_blocks,
-           d.sampled,
-           SUM(s.txs) * d.n_blocks / NULLIF(d.sampled, 0)                    AS txs_est,
-           SUM(s.unique_from) * d.n_blocks / NULLIF(d.sampled, 0)            AS active_addr_est,   -- upper bound (per-block uniques)
-           SUM(s.gas_used) * d.n_blocks / NULLIF(d.sampled, 0)               AS gas_est,
-           SUM(s.fees_eth) * d.n_blocks / NULLIF(d.sampled, 0)               AS fees_eth_est,
-           SUM(s.fees_eth) * d.n_blocks / NULLIF(d.sampled, 0) * e.price_usd AS fees_usd_est,
-           AVG(s.base_fee) / 1e9                                             AS avg_base_fee_gwei
-    FROM rh_block_samples s
-    JOIN rh_day_blocks d ON d.day = s.day
-    LEFT JOIN eth_price e ON e.day = s.day
-    WHERE d.sampled >= 50
-    GROUP BY s.day, d.n_blocks, d.sampled, e.price_usd ORDER BY s.day`);
+
+// ---- Robinhood Chain macro (DeFiLlama, source-labeled) ----
+export async function llamaChain() {
+  const rows = await q(`SELECT day, tvl_usd, fees_usd, revenue_usd, dex_volume_usd, sequencer_fees_usd FROM llama_chain_daily WHERE day >= '2026-05-01' ORDER BY day`);
   return rows.map(num);
 }
 
-// meme / launchpad share of activity: txs whose "to" is a launchpad contract, by week
-export async function memeShare() {
+// chain fees by category bucket, weekly: speculation (launchpad/meme/bots) vs finance (lending/RWA/yield) vs other
+export async function llamaFeesByBucket() {
   const rows = await q(`
-    WITH t AS (
-      SELECT date_trunc('week', s.day)::date AS week,
-             CASE WHEN l.kind = 'launchpad_deployer' THEN 'launchpad'
-                  WHEN l.kind = 'dex' THEN 'dex'
+    WITH b AS (
+      SELECT date_trunc('week', day)::date AS week,
+             CASE WHEN category IN ('Launchpad','Meme','Telegram Bot','Gamified Mining','Luck Games','Volume Boosting','Trading App') THEN 'speculation'
+                  WHEN category IN ('Lending','RWA','Yield','Yield Aggregator','Risk Curators','Onchain Capital Allocator','Uncollateralized Lending','Payments') THEN 'finance'
+                  WHEN category IN ('Dexs','DEX Aggregator','Derivatives','Prediction Market') THEN 'trading'
+                  WHEN category = 'Chain' THEN 'chain'
                   ELSE 'other' END AS bucket,
-             SUM(b.txs) AS txs, SUM(b.gas_used) AS gas, SUM(b.fees_eth) AS fees
-      FROM rh_block_to b JOIN rh_block_samples s ON s.block_number = b.block_number
-      LEFT JOIN rh_labels l ON l.address = b.to_addr
+             SUM(value_usd) AS fees_usd
+      FROM llama_protocol_daily WHERE metric = 'fees' AND day >= '2026-05-01'
       GROUP BY 1, 2
     )
-    SELECT week, bucket, txs, gas, fees,
-           txs::numeric / NULLIF(SUM(txs) OVER (PARTITION BY week), 0) AS tx_share,
-           gas::numeric / NULLIF(SUM(gas) OVER (PARTITION BY week), 0) AS gas_share,
-           fees / NULLIF(SUM(fees) OVER (PARTITION BY week), 0) AS fee_share
-    FROM t ORDER BY week, bucket`);
+    SELECT week, bucket, fees_usd, fees_usd / NULLIF(SUM(fees_usd) OVER (PARTITION BY week), 0) AS share
+    FROM b ORDER BY week, bucket`);
   return rows.map(num);
 }
 
-// top contracts by gas (sampled), last 30 days — for labeling and the "who pays the gas" table
-export async function topContracts() {
+export async function llamaTopProtocols() {
   const rows = await q(`
-    SELECT b.to_addr, COALESCE(l.label, '') AS label, COALESCE(l.kind, '') AS kind,
-           SUM(b.txs) AS txs, SUM(b.gas_used) AS gas, SUM(b.fees_eth) AS fees_eth,
-           SUM(b.gas_used)::numeric / NULLIF(SUM(SUM(b.gas_used)) OVER (), 0) AS gas_share
-    FROM rh_block_to b JOIN rh_block_samples s ON s.block_number = b.block_number
-    LEFT JOIN rh_labels l ON l.address = b.to_addr
-    WHERE s.day >= CURRENT_DATE - 30
-    GROUP BY 1, 2, 3 ORDER BY gas DESC LIMIT 20`);
+    SELECT protocol, category,
+           SUM(CASE WHEN metric='fees' THEN value_usd END) AS fees_7d,
+           SUM(CASE WHEN metric='revenue' THEN value_usd END) AS revenue_7d,
+           SUM(CASE WHEN metric='fees' THEN value_usd END) / NULLIF(SUM(SUM(CASE WHEN metric='fees' THEN value_usd END)) OVER (), 0) AS fee_share
+    FROM llama_protocol_daily WHERE day >= CURRENT_DATE - 7
+    GROUP BY 1, 2 ORDER BY fees_7d DESC NULLS LAST LIMIT 15`);
   return rows.map(num);
 }
 
-// chain economics: L2 fee revenue (est) vs L1 posting cost, weekly
-export async function chainEconomics() {
+// Maple-relevant protocols on the chain (comps within the chain): Morpho Blue, Steakhouse, Pons
+export async function llamaMapleContext() {
   const rows = await q(`
-    WITH l2 AS (
-      SELECT date_trunc('week', s.day)::date AS week,
-             SUM(s.fees_eth * d.n_blocks / NULLIF(d.sampled, 0)) AS l2_fees_eth,
-             SUM(s.fees_eth * d.n_blocks / NULLIF(d.sampled, 0) * e.price_usd) AS l2_fees_usd
-      FROM rh_block_samples s JOIN rh_day_blocks d ON d.day = s.day LEFT JOIN eth_price e ON e.day = s.day
-      WHERE d.sampled >= 50 GROUP BY 1
-    ),
-    l1 AS (
-      SELECT date_trunc('week', b.block_time)::date AS week, SUM(b.fee_eth) AS l1_cost_eth, SUM(b.fee_eth * e.price_usd) AS l1_cost_usd, COUNT(*) AS batches
-      FROM rh_l1_batches b LEFT JOIN eth_price e ON e.day = b.block_time::date GROUP BY 1
-    )
-    SELECT COALESCE(l2.week, l1.week) AS week, l2.l2_fees_eth, l2.l2_fees_usd, l1.l1_cost_eth, l1.l1_cost_usd, l1.batches,
-           l2.l2_fees_usd - COALESCE(l1.l1_cost_usd, 0) AS net_usd,
-           (l2.l2_fees_usd - COALESCE(l1.l1_cost_usd, 0)) / NULLIF(l2.l2_fees_usd, 0) AS margin
-    FROM l2 FULL OUTER JOIN l1 ON l1.week = l2.week ORDER BY 1`);
+    SELECT day, protocol, SUM(CASE WHEN metric='fees' THEN value_usd END) AS fees_usd, SUM(CASE WHEN metric='revenue' THEN value_usd END) AS revenue_usd
+    FROM llama_protocol_daily WHERE protocol IN ('Morpho Blue','Steakhouse Financial','Pons V2','Pons V1') AND day >= '2026-06-01'
+    GROUP BY 1, 2 ORDER BY 1, 2`);
   return rows.map(num);
 }
