@@ -287,21 +287,20 @@ export async function llamaChain() {
   return rows.map(num);
 }
 
-// chain fees by category bucket, weekly: speculation (dex/launchpad/meme/bots/perps) vs finance (lending/RWA/yield) vs chain vs other
+// chain fees by bucket, weekly: speculation (dex/launchpad/meme/bots/perps/NFT) vs finance (lending/RWA/yield).
+// bridges / wallets / interfaces etc. (~1% of fees) are dropped, not shown as "other".
 export async function llamaFeesByBucket() {
   const rows = await q(`
     WITH b AS (
       SELECT date_trunc('week', day)::date AS week,
-             CASE WHEN category IN ('Dexs','DEX Aggregator','Derivatives','Prediction Market','Launchpad','Meme','Telegram Bot','Gamified Mining','Luck Games','Volume Boosting','Trading App') THEN 'speculation'
-                  WHEN category IN (${FINANCE_CATS}) THEN 'finance'
-                  WHEN category = 'Chain' THEN 'chain'
-                  ELSE 'other' END AS bucket,
+             CASE WHEN category IN ('Dexs','DEX Aggregator','Derivatives','Prediction Market','Launchpad','Meme','Telegram Bot','Gamified Mining','Luck Games','Volume Boosting','Trading App','NFT Marketplace') THEN 'speculation'
+                  WHEN category IN (${FINANCE_CATS}) THEN 'finance' END AS bucket,
              SUM(value_usd) AS fees_usd
       FROM llama_protocol_daily WHERE metric = 'fees' AND day >= '2026-05-01'
       GROUP BY 1, 2
     )
     SELECT week, bucket, fees_usd, fees_usd / NULLIF(SUM(fees_usd) OVER (PARTITION BY week), 0) AS share
-    FROM b ORDER BY week, bucket`);
+    FROM b WHERE bucket IS NOT NULL ORDER BY week, bucket`);
   return rows.map(num);
 }
 
