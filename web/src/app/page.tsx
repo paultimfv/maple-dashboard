@@ -118,7 +118,7 @@ export default async function Page() {
           <Counter label="Interest generated (all-time)" value={fmtUsd(Number(it?.cumulative_gross_interest_usd ?? 0))} sub={`take rate ${fmtPct(Number(it?.maple_take_rate ?? 0))}`} />
           <Counter label="Loans outstanding" value={fmtUsd(Number(lo?.principal_outstanding_usd ?? 0))} />
           <Counter label="Total originated" value={fmtUsd(Number(last(loans)?.cumulative_originated_usd ?? 0))} />
-          <Counter label="Share of USDG on Robinhood Chain" value={fmtPct(Number(ug?.maple_share_of_usdg ?? 0))} sub={`USDG supply ${fmtUsd(Number(ug?.usdg_supply ?? 0))} (on-chain)`} />
+          <Counter label="Share of USDG on Robinhood Chain" value={fmtPct(Number(ug?.maple_share_of_usdg ?? 0))} sub={`USDG supply ${fmtUsd(Number(ug?.usdg_supply ?? 0))} (onchain)`} />
           <Counter label="Share of Robinhood DeFi TVL" value={fmtPct(Number(rt?.maple_share_of_rh_tvl ?? 0))} sub={`chain TVL ${fmtUsd(Number(rt?.robinhood_chain_tvl_usd ?? 0))} (DeFiLlama)`} />
         </div>
         <div className="grid gap-4 md:grid-cols-2">
@@ -178,18 +178,18 @@ export default async function Page() {
         <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
           <Counter label="SYRUP price" value={`$${Number(sp?.price_usd ?? 0).toFixed(3)}`} sub={`mcap ${fmtUsd(Number(sp?.mcap_usd ?? 0))}`} />
           <Counter label="Buybacks (all-time, table)" value={fmtUsd(bbTotal)} sub={`${buybacks.length} months · through ${String(last(buybacks)?.month ?? "").slice(0, 7)}`} />
-          <Counter label="syrupUSDG revenue, last month" value={fmtUsd(Number(rv?.syrupusdg_revenue ?? 0))} sub={`${fmtPct(Number(rv?.syrupusdg_share_of_onchain_rev ?? 0))} of Maple on-chain fees`} />
-          <Counter label="MIP-021 tier (on-chain fees only)" value={fmtPct(Number(rv?.mip21_tier ?? 0))} sub="excludes OTC desk revenue — see note" />
+          <Counter label="syrupUSDG revenue, last month" value={fmtUsd(Number(rv?.syrupusdg_revenue ?? 0))} sub={`${fmtPct(Number(rv?.syrupusdg_share_of_onchain_rev ?? 0))} of Maple onchain fees`} />
+          <Counter label="MIP-021 tier (onchain fees only)" value={fmtPct(Number(rv?.mip21_tier ?? 0))} sub="excludes OTC desk revenue — see note" />
         </div>
         <div className="grid gap-4 md:grid-cols-2">
           <Card title="SYRUP price (CoinGecko, trailing 1y)"><SimpleLine data={syrup} x="day" ys={["price_usd"]} fmt="rate" /></Card>
           <Card title="SYRUP buybacks by month"><BarsPlusLine data={buybacks} x="month" bar="amount_usd" line="avg_price" /></Card>
-          <Card title="Maple on-chain revenue by month: syrupUSDG vs all pools"><StackedBars data={rev} x="month" ys={["syrupusdg_revenue", "onchain_revenue_all_pools"]} /></Card>
-          <Card title="Implied MIP-021 buyback from on-chain fees"><StackedBars data={rev} x="month" ys={["implied_buyback_onchain_only"]} /></Card>
+          <Card title="Maple onchain revenue by month: syrupUSDG vs all pools"><StackedBars data={rev} x="month" ys={["syrupusdg_revenue", "onchain_revenue_all_pools"]} /></Card>
+          <Card title="Implied MIP-021 buyback from onchain fees"><StackedBars data={rev} x="month" ys={["implied_buyback_onchain_only"]} /></Card>
         </div>
         <p className="text-xs text-neutral-500">
           MIP-021 (Aug 2026, 6 months): 10% of monthly protocol revenue below $1.5M, 20% between $1.5–2M, 30% above $2M goes to SYRUP buybacks.
-          On-chain fees here = open-term platform mgmt + service fees (mainnet, WETH pool excluded). Maple&apos;s OTC desk revenue (~46% of all-time revenue) is off-chain and not included, so the tier shown is a floor.
+          Onchain fees here = open-term platform mgmt + service fees (mainnet, WETH pool excluded). Maple&apos;s OTC desk revenue (~46% of all-time revenue) is off-chain and not included, so the tier shown is a floor.
         </p>
       </section>
 

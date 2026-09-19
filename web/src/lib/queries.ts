@@ -261,7 +261,7 @@ export async function syrupBuybacks() {
 
 // ---- Revenue bridge: syrupUSDG monthly Maple revenue -> MIP-021 tier -> implied buyback ----
 // MIP-021: 10% of monthly revenue < $1.5M, 20% $1.5–2M, 30% > $2M (on that month's total protocol revenue).
-// Protocol-wide revenue needs all pools; here we show syrupUSDG's contribution and the share of Maple's on-chain fees it represents.
+// Protocol-wide revenue needs all pools; here we show syrupUSDG's contribution and the share of Maple's onchain fees it represents.
 export async function revenueBridge() {
   const rows = await q(`
     WITH m AS (
