@@ -6,6 +6,10 @@ import {
 
 type Row = Record<string, unknown>;
 const C = ["#7c9cff", "#f4b860", "#7bd389", "#ef7d7d", "#b088f9"];
+const MUTED = "#3a3a3a";
+/** series named here render grey and go last in the stack (i.e. on top), so they don't interrupt the real buckets */
+const MUTED_KEYS = new Set(["other"]);
+const color = (k: string, i: number) => (MUTED_KEYS.has(k) ? MUTED : C[i % C.length]);
 
 import { fmtUsd, fmtPct } from "@/lib/fmt";
 
@@ -41,7 +45,7 @@ export function Card({ title, children }: { title: string; children: React.React
 
 /** long → wide pivot for the stacked-by-category charts */
 function pivot(data: Row[], x: string, y: string, group: string) {
-  const keys = Array.from(new Set(data.map((r) => String(r[group]))));
+  const keys = Array.from(new Set(data.map((r) => String(r[group])))).sort((a, b) => Number(MUTED_KEYS.has(a)) - Number(MUTED_KEYS.has(b)));
   const byX = new Map<string, Row>();
   for (const r of data) {
     const k = String(r[x]).slice(0, 10);
@@ -62,7 +66,7 @@ export function StackedArea({ data, x, y, group, fmt = "pct" }: { data: Row[]; x
         <YAxis tickFormatter={F[fmt]} width={64} {...axis} />
         {tip(F[fmt])}
         <Legend />
-        {keys.map((k, i) => <Area key={k} dataKey={k} stackId="1" stroke={C[i % C.length]} fill={C[i % C.length]} fillOpacity={0.35} />)}
+        {keys.map((k, i) => <Area key={k} dataKey={k} stackId="1" stroke={color(k, i)} fill={color(k, i)} fillOpacity={0.35} />)}
       </AreaChart>
     </ResponsiveContainer>
   );
@@ -79,7 +83,7 @@ export function StackedColumns({ data, x, y, group, fmt = "usd" }: { data: Row[]
         <YAxis tickFormatter={F[fmt]} width={64} {...axis} />
         {tip(F[fmt])}
         <Legend />
-        {keys.map((k, i) => <Bar key={k} dataKey={k} stackId="1" fill={C[i % C.length]} />)}
+        {keys.map((k, i) => <Bar key={k} dataKey={k} stackId="1" fill={color(k, i)} />)}
       </BarChart>
     </ResponsiveContainer>
   );

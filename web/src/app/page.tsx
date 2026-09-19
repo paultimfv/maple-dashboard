@@ -56,6 +56,7 @@ export default async function Page() {
           <Card title="Protocol fees per day (all protocols on chain)"><SimpleArea data={chain} x="day" y="fees_usd" /></Card>
           <Card title="Fee share: speculation vs finance, weekly"><StackedArea data={buckets} x="week" y="share" group="bucket" fmt="pct" /></Card>
           <Card title="Fees: speculation vs finance, weekly (USD)"><StackedColumns data={buckets} x="week" y="fees_usd" group="bucket" /></Card>
+          <p className="text-xs text-neutral-500 md:col-span-2">Buckets by DeFiLlama category. <span className="text-neutral-400">Speculation</span> = DEXs, aggregators, perps, prediction markets, launchpads, meme, Telegram bots, gamified mining, NFT marketplaces. <span className="text-neutral-400">Finance</span> = lending, risk curators, RWA, yield, capital allocators, payments. <span className="text-neutral-400">Other</span> (grey, ~1%) = bridges, wallets, interfaces, AI agents, indexes.</p>
           <Card title="DEX volume per day"><SimpleArea data={chain} x="day" y="dex_volume_usd" /></Card>
           <Card title="Sequencer (gas) fees per day — Robinhood&apos;s own take"><SimpleArea data={chain} x="day" y="sequencer_fees_usd" /></Card>
           <Card title="Lending / Earn protocol fees, weekly (the finance bucket, by protocol)"><StackedColumns data={finw} x="week" y="fees_usd" group="protocol" /></Card>
