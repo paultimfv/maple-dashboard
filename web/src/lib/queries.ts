@@ -441,3 +441,14 @@ export async function holders() {
     SELECT token, address, holders, transfers FROM bs_holders WHERE day = (SELECT MAX(day) FROM bs_holders) ORDER BY holders DESC`);
   return rows.map(num);
 }
+
+// stablecoin supply on Robinhood Chain, daily totalSupply() per canonical contract (spUSDG wraps USDG: shown, not summed)
+export async function stableSupply() {
+  const rows = await q(`SELECT day, token, kind, supply FROM rh_stable_supply WHERE supply > 0 AND token <> 'spUSDG' ORDER BY day, token`);
+  return rows.map(num);
+}
+export async function stableSupplyLatest() {
+  const rows = await q(`
+    SELECT token, kind, supply FROM rh_stable_supply WHERE day = (SELECT MAX(day) FROM rh_stable_supply WHERE token = 'USDG') ORDER BY supply DESC`);
+  return rows.map(num);
+}
