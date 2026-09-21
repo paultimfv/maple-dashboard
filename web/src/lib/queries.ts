@@ -330,12 +330,12 @@ export async function llamaFinanceWeekly() {
 // Robinhood stock tokens: supply (shares) by token, latest
 export async function stockTokens() {
   const rows = await q(`
-    SELECT t.symbol, t.name,
+    SELECT t.symbol, t.name, t.address,
            SUM(CASE WHEN f.kind = 'mint' THEN f.amount ELSE -f.amount END) AS shares_outstanding,
            SUM(CASE WHEN f.kind = 'mint' THEN f.amount END) AS minted, SUM(CASE WHEN f.kind = 'burn' THEN f.amount END) AS burned,
            COUNT(*) AS events, MIN(f.block_time)::date AS first_mint
     FROM stock_token_flows f JOIN rh_tokens t ON t.address = f.token
-    GROUP BY 1, 2 HAVING SUM(CASE WHEN f.kind = 'mint' THEN f.amount ELSE -f.amount END) > 0
+    GROUP BY 1, 2, 3 HAVING SUM(CASE WHEN f.kind = 'mint' THEN f.amount ELSE -f.amount END) > 0
     ORDER BY shares_outstanding DESC`);
   return rows.map(num);
 }
@@ -389,5 +389,55 @@ export async function earnRwaShare() {
       FROM morpho_flows f JOIN morpho_markets m ON m.market_id = f.market_id WHERE f.on_behalf = $1 GROUP BY 1
     )
     SELECT collateral, GREATEST(a, 0) AS allocated_usdg, GREATEST(a, 0) / NULLIF(SUM(GREATEST(a, 0)) OVER (), 0) AS share FROM cum ORDER BY a DESC`, [EARN_VAULT]);
+  return rows.map(num);
+}
+
+
+// ---- Raw chain data: Blockscout stats-service + canonical bridge (no DeFiLlama) ----
+// daily activity; today excluded (partial day)
+export async function bsChain() {
+  const rows = await q(`
+    SELECT b.day, b.txns, b.active_accounts, b.new_accounts, b.new_contracts, b.user_ops, b.new_aa_wallets, b.success_rate,
+           b.fees_eth, b.fees_eth * p.price_usd AS fees_usd,
+           l.l1_eth * p.price_usd AS l1_cost_usd,
+           (b.fees_eth - COALESCE(l.l1_eth, 0)) * p.price_usd AS sequencer_margin_usd
+    FROM bs_chain_daily b
+    LEFT JOIN eth_price p ON p.day = b.day
+    LEFT JOIN (SELECT block_time::date AS day, SUM(fee_eth) AS l1_eth FROM rh_l1_batches GROUP BY 1) l ON l.day = b.day
+    WHERE b.day >= '2026-05-11' AND b.day < CURRENT_DATE ORDER BY b.day`);
+  return rows.map(num);
+}
+
+// capital on the chain, two ways: ETH in the L1 bridge (onchain) + USDG minted natively, vs DeFiLlama's protocol-sum TVL
+export async function capitalOnChain() {
+  const rows = await q(`
+    WITH usdg AS (
+      SELECT block_time::date AS day, SUM(CASE WHEN from_addr = '0x0000000000000000000000000000000000000000' THEN amount ELSE -amount END) AS net
+      FROM rh_transfers WHERE token = 'USDG' GROUP BY 1
+    ),
+    syrup AS (
+      SELECT block_time::date AS day, SUM(CASE WHEN from_addr = '0x0000000000000000000000000000000000000000' THEN amount ELSE -amount END) AS net
+      FROM rh_transfers WHERE token = 'syrupUSDG' GROUP BY 1
+    )
+    SELECT b.day, b.eth_bridged, b.eth_bridged * p.price_usd AS eth_bridged_usd,
+           (SELECT COALESCE(SUM(net), 0) FROM usdg WHERE day <= b.day) AS usdg_native,
+           b.eth_bridged * p.price_usd + (SELECT COALESCE(SUM(net), 0) FROM usdg WHERE day <= b.day) AS capital_onchain_usd,
+           t.tvl_usd AS llama_tvl_usd,
+           (SELECT COALESCE(SUM(net), 0) FROM syrup WHERE day <= b.day) * COALESCE(ps.exch_rate, 1) AS maple_on_rh_usd,
+           (SELECT COALESCE(SUM(net), 0) FROM syrup WHERE day <= b.day) * COALESCE(ps.exch_rate, 1)
+             / NULLIF(b.eth_bridged * p.price_usd + (SELECT COALESCE(SUM(net), 0) FROM usdg WHERE day <= b.day), 0) AS maple_share_of_capital,
+           (SELECT COALESCE(SUM(net), 0) FROM syrup WHERE day <= b.day) * COALESCE(ps.exch_rate, 1) / NULLIF(t.tvl_usd, 0) AS maple_share_of_llama_tvl
+    FROM bridge_tvl b
+    LEFT JOIN eth_price p ON p.day = b.day
+    LEFT JOIN chain_tvl t ON t.day = b.day
+    LEFT JOIN LATERAL (SELECT exch_rate FROM pool_state WHERE pool = 'syrupUSDG' AND day <= b.day ORDER BY day DESC LIMIT 1) ps ON true
+    WHERE b.day >= '2026-06-05' ORDER BY b.day`);
+  return rows.map(num);
+}
+
+// holder counts (Blockscout REST), latest snapshot
+export async function holders() {
+  const rows = await q(`
+    SELECT token, address, holders, transfers FROM bs_holders WHERE day = (SELECT MAX(day) FROM bs_holders) ORDER BY holders DESC`);
   return rows.map(num);
 }
