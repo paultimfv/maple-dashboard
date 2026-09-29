@@ -129,7 +129,7 @@ export default async function Page() {
           <Counter label="Interest generated (all-time)" value={fmtUsd(Number(it?.cumulative_gross_interest_usd ?? 0))} sub={`take rate ${fmtPct(Number(it?.maple_take_rate ?? 0))}`} />
           <Counter label="Loans outstanding" value={fmtUsd(Number(lo?.principal_outstanding_usd ?? 0))} />
           <Counter label="Total originated" value={fmtUsd(Number(last(loans)?.cumulative_originated_usd ?? 0))} />
-          <Counter label="Share of USDG on Robinhood Chain" value={fmtPct(Number(ug?.maple_share_of_usdg ?? 0))} sub={`USDG supply ${fmtUsd(Number(ug?.usdg_supply ?? 0))} · ${holderOf("USDG").toLocaleString()} holders`} />
+          <Counter label="Share of USDG on Robinhood Chain" value={fmtPct(Number(ug?.maple_share_of_usdg ?? 0))} sub={`USDG supply ${fmtUsd(Number(ug?.usdg_supply ?? 0))} (totalSupply) · ${holderOf("USDG").toLocaleString()} holders`} />
           <Counter label="Share of capital on Robinhood Chain" value={fmtPct(Number(cl?.maple_share_of_capital ?? 0))} sub={`onchain (ETH bridged + USDG) · ${fmtPct(Number(cl?.maple_share_of_llama_tvl ?? 0))} of DeFi TVL (DeFiLlama)`} />
         </div>
         <div className="grid gap-4 md:grid-cols-2">

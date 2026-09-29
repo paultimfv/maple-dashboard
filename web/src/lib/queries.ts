@@ -161,23 +161,13 @@ export async function poolState() {
 // Maple share of USDG supply on Robinhood Chain (self-defined denominator: net-minted USDG)
 export async function shareOfUsdg() {
   const rows = await q(`
-    WITH s AS (
-      SELECT block_time::date AS day, token,
-             SUM(CASE WHEN from_addr = '0x0000000000000000000000000000000000000000' THEN amount ELSE -amount END) AS net
-      FROM rh_transfers WHERE token IN ('USDG', 'syrupUSDG') GROUP BY 1, 2
-    ),
-    days AS (SELECT DISTINCT day FROM s WHERE day >= '2026-06-05'),
-    c AS (
-      SELECT d.day,
-             (SELECT COALESCE(SUM(net), 0) FROM s WHERE token = 'USDG' AND day <= d.day) AS usdg_supply,
-             (SELECT COALESCE(SUM(net), 0) FROM s WHERE token = 'syrupUSDG' AND day <= d.day) AS syrup_supply
-      FROM days d
-    )
-    SELECT c.day, c.usdg_supply, c.syrup_supply * COALESCE(p.exch_rate, 1) AS maple_on_rh_usd,
-           c.syrup_supply * COALESCE(p.exch_rate, 1) / NULLIF(c.usdg_supply, 0) AS maple_share_of_usdg
-    FROM c
-    LEFT JOIN LATERAL (SELECT exch_rate FROM pool_state WHERE pool = 'syrupUSDG' AND day <= c.day ORDER BY day DESC LIMIT 1) p ON true
-    ORDER BY c.day`);
+    SELECT u.day, u.supply AS usdg_supply, y.supply * COALESCE(p.exch_rate, 1) AS maple_on_rh_usd,
+           y.supply * COALESCE(p.exch_rate, 1) / NULLIF(u.supply, 0) AS maple_share_of_usdg
+    FROM rh_stable_supply u
+    JOIN rh_stable_supply y ON y.day = u.day AND y.token = 'syrupUSDG'
+    LEFT JOIN LATERAL (SELECT exch_rate FROM pool_state WHERE pool = 'syrupUSDG' AND day <= u.day ORDER BY day DESC LIMIT 1) p ON true
+    WHERE u.token = 'USDG' AND u.supply > 0 AND y.supply > 0
+    ORDER BY u.day`);
   return rows.map(num);
 }
 
@@ -411,25 +401,22 @@ export async function bsChain() {
 // capital on the chain, two ways: ETH in the L1 bridge (onchain) + USDG minted natively, vs DeFiLlama's protocol-sum TVL
 export async function capitalOnChain() {
   const rows = await q(`
-    WITH usdg AS (
-      SELECT block_time::date AS day, SUM(CASE WHEN from_addr = '0x0000000000000000000000000000000000000000' THEN amount ELSE -amount END) AS net
-      FROM rh_transfers WHERE token = 'USDG' GROUP BY 1
-    ),
-    syrup AS (
+    WITH syrup AS (
       SELECT block_time::date AS day, SUM(CASE WHEN from_addr = '0x0000000000000000000000000000000000000000' THEN amount ELSE -amount END) AS net
       FROM rh_transfers WHERE token = 'syrupUSDG' GROUP BY 1
     )
     SELECT b.day, b.eth_bridged, b.eth_bridged * p.price_usd AS eth_bridged_usd,
-           (SELECT COALESCE(SUM(net), 0) FROM usdg WHERE day <= b.day) AS usdg_native,
-           b.eth_bridged * p.price_usd + (SELECT COALESCE(SUM(net), 0) FROM usdg WHERE day <= b.day) AS capital_onchain_usd,
+           COALESCE(u.supply, 0) AS usdg_native,
+           b.eth_bridged * p.price_usd + COALESCE(u.supply, 0) AS capital_onchain_usd,
            t.tvl_usd AS llama_tvl_usd,
            (SELECT COALESCE(SUM(net), 0) FROM syrup WHERE day <= b.day) * COALESCE(ps.exch_rate, 1) AS maple_on_rh_usd,
            (SELECT COALESCE(SUM(net), 0) FROM syrup WHERE day <= b.day) * COALESCE(ps.exch_rate, 1)
-             / NULLIF(b.eth_bridged * p.price_usd + (SELECT COALESCE(SUM(net), 0) FROM usdg WHERE day <= b.day), 0) AS maple_share_of_capital,
+             / NULLIF(b.eth_bridged * p.price_usd + COALESCE(u.supply, 0), 0) AS maple_share_of_capital,
            (SELECT COALESCE(SUM(net), 0) FROM syrup WHERE day <= b.day) * COALESCE(ps.exch_rate, 1) / NULLIF(t.tvl_usd, 0) AS maple_share_of_llama_tvl
     FROM bridge_tvl b
     LEFT JOIN eth_price p ON p.day = b.day
     LEFT JOIN chain_tvl t ON t.day = b.day
+    LEFT JOIN rh_stable_supply u ON u.day = b.day AND u.token = 'USDG'
     LEFT JOIN LATERAL (SELECT exch_rate FROM pool_state WHERE pool = 'syrupUSDG' AND day <= b.day ORDER BY day DESC LIMIT 1) ps ON true
     WHERE b.day >= '2026-06-05' ORDER BY b.day`);
   return rows.map(num);
