@@ -1,4 +1,4 @@
-import { rhAum, earnAllocation, earnShare, interestWeekly, loansWeekly, shareOfUsdg, poolState, utilization, topLoans, syrupPrice, syrupBuybacks, revenueBridge, capitalOnChain, holders, mapleRevenueMonthly, mapleModelMonthly, mapleAumByPool, mapleAumLatest, annualInputs, syrupSupply, mapleAumReported, poolsSnapshot } from "@/lib/queries";
+import { rhAum, earnAllocation, earnShare, interestWeekly, loansWeekly, shareOfUsdg, poolState, utilization, topLoans, syrupPrice, syrupBuybacks, revenueBridge, capitalOnChain, holders, mapleRevenueMonthly, mapleModelMonthly, mapleAumByPool, mapleAumLatest, annualInputs, syrupSupply, mapleAumReported, poolsSnapshot, mapleLenders, mapleBorrowers } from "@/lib/queries";
 import { Counter, Card, StackedColumns, SimpleLine, StackedBars, BarsPlusLine, Table, StackedBarsWithLines } from "@/components/charts";
 import { fmtUsd, fmtPct } from "@/lib/fmt";
 
@@ -12,6 +12,13 @@ export default async function MaplePage() {
     mapleRevenueMonthly(), mapleModelMonthly(), mapleAumByPool(), mapleAumLatest(), annualInputs(), syrupSupply(), mapleAumReported(), poolsSnapshot(),
   ]);
   const ar = last(aumRep);
+  const [lenders, borrowers] = await Promise.all([mapleLenders(), mapleBorrowers()]);
+  const ln = last(lenders);
+  const bw = last(borrowers);
+  const yoy = <T extends Record<string, unknown>>(rows: T[], k: string) => {
+    const a = rows.slice(-12).reduce((s, x) => s + n(x[k]), 0), b = rows.slice(-24, -12).reduce((s, x) => s + n(x[k]), 0);
+    return b ? a / b - 1 : 0;
+  };
   const [aum, alloc, share, interest, loans, usdg, pool, util, top, syrup, buybacks, bridgeRev, cap, hold] = await Promise.all([
     rhAum(), earnAllocation(), earnShare(), interestWeekly(), loansWeekly(), shareOfUsdg(), poolState(), utilization(), topLoans(),
     syrupPrice(), syrupBuybacks(), revenueBridge(), capitalOnChain(), holders(),
@@ -89,6 +96,24 @@ export default async function MaplePage() {
           <span className="text-neutral-400">Onchain revenue</span> = open-term <code>ClaimedFundsDistributed</code> (platform + delegate fees) + fixed-term <code>ManagementFeesPaid</code> / <code>ServiceFeesPaid</code> / <code>OriginationFeesPaid</code> + strategy <code>StrategyFeesCollected</code>. WETH pools excluded.
           {" "}<span className="text-neutral-400">OTC / offchain</span> = Maple&apos;s published OTC desk revenue through May 2026; from July 2026 implied from onchain buybacks (MIP-021 buyback ÷ tier − onchain fees). June 2026 has no offchain figure.
         </p>
+      </section>
+
+      {/* ---------------------------------------------------------------- lenders + borrowers */}
+      <section className="space-y-4">
+        <h2 className="text-lg font-medium">Lenders and borrowers</h2>
+        <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
+          <Counter label="Unique lenders (all-time)" value={n(ln?.cumulative_lenders).toLocaleString()} sub={`${n(ln?.new_lenders).toLocaleString()} new in ${String(ln?.month ?? "").slice(0, 7)}`} />
+          <Counter label="New lenders, last 12m vs prior 12m" value={`${yoy(lenders, "new_lenders") >= 0 ? "+" : ""}${fmtPct(yoy(lenders, "new_lenders"))}`} sub="pool Deposit events, all USD pools" />
+          <Counter label="Unique borrowers (all-time)" value={n(bw?.cumulative_borrowers).toLocaleString()} sub={`${n(bw?.active_borrowers)} paying in ${String(bw?.month ?? "").slice(0, 7)} · ${n(bw?.active_loans)} loans`} />
+          <Counter label="Interest paid, last 12m vs prior 12m" value={`${yoy(borrowers, "interest_paid_usd") >= 0 ? "+" : ""}${fmtPct(yoy(borrowers, "interest_paid_usd"))}`} sub="gross interest on open-term loans" />
+        </div>
+        <div className="grid gap-4 md:grid-cols-2">
+          <Card title="Lenders per month: new vs returning"><StackedBars data={lenders.map((x) => ({ ...x, returning_lenders: n(x.active_lenders) - n(x.new_lenders) }))} x="month" ys={["new_lenders", "returning_lenders"]} fmt="raw" /></Card>
+          <Card title="Cumulative unique lenders"><SimpleLine data={lenders} x="month" ys={["cumulative_lenders"]} fmt="raw" /></Card>
+          <Card title="Borrowers paying per month: new vs existing"><StackedBars data={borrowers.map((x) => ({ ...x, existing_borrowers: n(x.active_borrowers) - n(x.new_borrowers) }))} x="month" ys={["new_borrowers", "existing_borrowers"]} fmt="raw" /></Card>
+          <Card title="Interest paid by borrowers per month"><StackedBars data={borrowers} x="month" ys={["interest_paid_usd"]} /></Card>
+        </div>
+        <p className="text-xs text-neutral-500">Lenders = distinct share recipients of ERC-4626 <code>Deposit</code> on every USD Maple pool. Borrowers = <code>loan.borrower()</code> for every loan that made a payment (<code>ClaimedFundsDistributed</code>, fixed-term fee events). Rebuilt from contracts; replaces the Dune versions.</p>
       </section>
 
       {/* ---------------------------------------------------------------- Robinhood channel */}

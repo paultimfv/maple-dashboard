@@ -494,3 +494,13 @@ export async function poolsSnapshot() {
   const rows = await q(`SELECT * FROM dune.pools_snapshot ORDER BY is_total, tvl DESC`);
   return rows.map(num);
 }
+
+// ---- Lenders and borrowers (rebuilt from contracts; replaces Dune 8714452 / 8714541) ----
+export async function mapleLenders() {
+  const rows = await q(`SELECT month, active_lenders, new_lenders, cumulative_lenders, deposits, deposited_usd FROM monthly_lenders WHERE month >= '2024-01-01' AND month < date_trunc('month', now()) ORDER BY month`);
+  return rows.map(num);
+}
+export async function mapleBorrowers() {
+  const rows = await q(`SELECT month, active_borrowers, new_borrowers, cumulative_borrowers, active_loans, interest_paid_usd FROM monthly_borrowers WHERE month >= '2024-01-01' AND month < date_trunc('month', now()) ORDER BY month`);
+  return rows.map(num);
+}
