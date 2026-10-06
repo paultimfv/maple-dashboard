@@ -1,7 +1,7 @@
 "use client";
 import {
   ResponsiveContainer, AreaChart, Area, BarChart, Bar, LineChart, Line, ComposedChart,
-  XAxis, YAxis, Tooltip, Legend, CartesianGrid,
+  XAxis, YAxis, Tooltip, Legend, CartesianGrid, ReferenceLine,
 } from "recharts";
 
 type Row = Record<string, unknown>;
@@ -13,10 +13,11 @@ const color = (k: string, i: number) => (MUTED_KEYS.has(k) ? MUTED : C[i % C.len
 
 import { fmtUsd, fmtPct } from "@/lib/fmt";
 
-export type Fmt = "usd" | "pct" | "rate" | "raw";
-const F: Record<Fmt, (v: number) => string> = { usd: fmtUsd, pct: fmtPct, rate: (v) => v.toFixed(4), raw: (v) => v.toLocaleString() };
+export type Fmt = "usd" | "pct" | "rate" | "raw" | "mult";
+const F: Record<Fmt, (v: number) => string> = { usd: fmtUsd, pct: fmtPct, rate: (v) => v.toFixed(4), raw: (v) => v.toLocaleString(), mult: (v) => `${v.toFixed(1)}x` };
 const MON = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
-const fmtDay = (d: unknown) => { const s = String(d); return `${MON[Number(s.slice(5, 7)) - 1]} ${s.slice(8, 10)}`; };
+// month-start dates (monthly series) render as "Mar '25"; anything else as "Mar 14"
+const fmtDay = (d: unknown) => { const s = String(d); const m = MON[Number(s.slice(5, 7)) - 1]; return s.slice(8, 10) === "01" ? `${m} '${s.slice(2, 4)}` : `${m} ${s.slice(8, 10)}`; };
 
 const axis = { stroke: "#666", fontSize: 11 };
 const grid = <CartesianGrid stroke="#222" vertical={false} />;
@@ -162,5 +163,22 @@ export function Table({ rows, cols }: { rows: Row[]; cols: { key: string; title:
         ))}</tbody>
       </table>
     </div>
+  );
+}
+
+/** Stacked bars with horizontal threshold lines (e.g. MIP-021 buyback tiers at $1.5M / $2M). */
+export function StackedBarsWithLines({ data, x, ys, lines, fmt = "usd" }: { data: Row[]; x: string; ys: string[]; lines: { y: number; label: string }[]; fmt?: Fmt }) {
+  return (
+    <ResponsiveContainer>
+      <BarChart data={data}>
+        {grid}
+        <XAxis dataKey={x} tickFormatter={fmtDay} {...axis} />
+        <YAxis tickFormatter={F[fmt]} width={64} {...axis} />
+        {tip(F[fmt])}
+        <Legend />
+        {ys.map((y, i) => <Bar key={y} dataKey={y} stackId="1" fill={C[i % C.length]} />)}
+        {lines.map((l) => <ReferenceLine key={l.label} y={l.y} stroke="#888" strokeDasharray="4 4" label={{ value: l.label, fill: "#888", fontSize: 10, position: "insideTopLeft" }} />)}
+      </BarChart>
+    </ResponsiveContainer>
   );
 }

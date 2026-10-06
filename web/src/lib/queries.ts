@@ -439,3 +439,58 @@ export async function stableSupplyLatest() {
     SELECT token, kind, supply FROM rh_stable_supply WHERE day = (SELECT MAX(day) FROM rh_stable_supply WHERE token = 'USDG') ORDER BY supply DESC`);
   return rows.map(num);
 }
+
+// ---- Maple protocol economics (pipeline views: monthly_revenue, monthly_model, aum_monthly, annual_model_inputs) ----
+// Every onchain line is rebuilt from contract events; offchain = OTC desk (Maple-published, to May 2026),
+// then implied from onchain MIP-021 buybacks (buyback ÷ tier − onchain fees).
+export async function mapleRevenueMonthly() {
+  const rows = await q(`
+    SELECT month, open_term_platform + open_term_delegate AS open_term_loans, fixed_term AS fixed_term_loans,
+           strategy AS strategies, offchain_revenue AS otc_offchain, onchain_revenue, total_revenue, offchain_unknown
+    FROM monthly_revenue WHERE month >= '2024-01-01' AND month < date_trunc('month', now()) ORDER BY month`);
+  return rows.map(num);
+}
+export async function mapleModelMonthly() {
+  const rows = await q(`SELECT * FROM monthly_model WHERE month >= '2024-01-01' AND month < date_trunc('month', now()) ORDER BY month`);
+  return rows.map(num);
+}
+export async function mapleAumByPool() {
+  const rows = await q(`SELECT date_trunc('month', month_end)::date AS day, pool, aum_usd FROM aum_monthly WHERE month_end >= '2024-01-01' ORDER BY month_end, pool`);
+  return rows.map(num);
+}
+export async function mapleAumLatest() {
+  const rows = await q(`
+    SELECT pool, total_assets AS aum_usd, day FROM pool_state
+    WHERE day = (SELECT max(day) FROM pool_state) AND pool NOT IN ('High Yield Corporate Loan WETH', 'Maven11 WETH') AND total_assets > 1000
+    ORDER BY total_assets DESC`);
+  return rows.map(num);
+}
+export async function annualInputs() {
+  const rows = await q(`SELECT *, mcap_year_end / NULLIF(total_revenue, 0) AS ps FROM annual_model_inputs WHERE year >= 2024 ORDER BY year`);
+  return rows.map(num);
+}
+export async function syrupSupply() {
+  const rows = await q(`SELECT day, total_supply, maple_held, total_supply - maple_held AS circulating FROM syrup_supply ORDER BY day`);
+  return rows.map(num);
+}
+
+// ---- Macro ----
+export async function stablecoinSupplyGlobal() {
+  const rows = await q(`SELECT day, supply_usd FROM stablecoin_supply WHERE day >= '2020-01-01' AND extract(dow FROM day) = 0 ORDER BY day`);
+  return rows.map(num);
+}
+
+// ---- From the author's Dune exports (schema `dune`, static history to Sep 2026) ----
+// Maple-reported AUM = lender deposits + borrower collateral (collateral sits with custodians, not in pool contracts)
+export async function mapleAumReported() {
+  const rows = await q(`
+    SELECT date::date AS day, deposits_usd, collateral_usd, deposits_usd + collateral_usd AS aum_usd
+    FROM dune.pool_aum_vs_deposits_over_time_protocol_totals
+    WHERE extract(dow FROM date::date) = 0 OR date::date = (SELECT max(date::date) FROM dune.pool_aum_vs_deposits_over_time_protocol_totals)
+    ORDER BY 1`);
+  return rows.map(num);
+}
+export async function poolsSnapshot() {
+  const rows = await q(`SELECT * FROM dune.pools_snapshot ORDER BY is_total, tvl DESC`);
+  return rows.map(num);
+}
