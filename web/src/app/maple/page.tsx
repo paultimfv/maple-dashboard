@@ -70,17 +70,17 @@ export default async function MaplePage() {
             <StackedBarsWithLines data={rev} x="month" ys={["open_term_loans", "fixed_term_loans", "strategies", "otc_offchain"]}
               lines={[{ y: 1_500_000, label: "20% tier" }, { y: 2_000_000, label: "30% tier" }]} />
           </Card>
-          <Card title="AUM = lender deposits + borrower collateral (weekly, Dune export)"><StackedBars data={aumRep} x="day" ys={["deposits_usd", "collateral_usd"]} /></Card>
+          <Card title="AUM = lender deposits + borrower collateral (weekly; Maple API, earlier history via Dune)"><StackedBars data={aumRep} x="day" ys={["deposits_usd", "collateral_usd"]} /></Card>
           <Card title="Lender deposits by pool, month-end (pool totalAssets, live from contracts)"><StackedColumns data={aumPools} x="day" y="aum_usd" group="pool" /></Card>
           <Card title="P/S on trailing-12m revenue"><SimpleLine data={model.filter((x) => x.ps_ttm != null)} x="month" ys={["ps_ttm"]} fmt="mult" /></Card>
           <Card title="Revenue yield on AUM (annualised)"><SimpleLine data={model.filter((x) => x.revenue_yield_on_aum != null)} x="month" ys={["revenue_yield_on_aum"]} /></Card>
         </div>
         <div className="rounded-lg border border-neutral-800 bg-neutral-900/60 p-4">
-          <div className="mb-3 text-sm font-medium text-neutral-300">Pools snapshot (Dune export, Sep 2026)</div>
+          <div className="mb-3 text-sm font-medium text-neutral-300">Pools today (Maple API, {String(snap[0]?.day ?? "").slice(0, 10)}): TVL = deposits + borrower collateral</div>
           <Table rows={snap} cols={[
-            { key: "pool_name", title: "pool" }, { key: "tvl", title: "TVL", fmt: "usd" }, { key: "share_of_protocol_tvl", title: "share", fmt: "pct" },
-            { key: "loans_outstanding_usd", title: "loans out", fmt: "usd" }, { key: "utilization_reported", title: "utilization", fmt: "pct" },
-            { key: "xirr_30day", title: "30d yield", fmt: "pct" }, { key: "cumulative_originations_usd", title: "originated", fmt: "usd" },
+            { key: "pool_name", title: "pool" }, { key: "tvl", title: "TVL (AUM)", fmt: "usd" }, { key: "share_of_protocol_tvl", title: "share", fmt: "pct" },
+            { key: "deposits_usd", title: "deposits", fmt: "usd" }, { key: "collateral_usd", title: "collateral", fmt: "usd" },
+            { key: "loans_outstanding_usd", title: "loans out", fmt: "usd" }, { key: "utilization", title: "utilization", fmt: "pct" },
           ]} />
         </div>
         <div className="rounded-lg border border-neutral-800 bg-neutral-900/60 p-4">

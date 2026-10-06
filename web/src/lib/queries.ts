@@ -480,18 +480,22 @@ export async function stablecoinSupplyGlobal() {
   return rows.map(num);
 }
 
-// ---- From the author's Dune exports (schema `dune`, static history to Sep 2026) ----
-// Maple-reported AUM = lender deposits + borrower collateral (collateral sits with custodians, not in pool contracts)
+// ---- Maple-reported AUM = lender deposits + borrower collateral (collateral sits with custodians, not in pool contracts) ----
+// Live: Maple's API, daily (pipeline maple_pool_state). History before that: Dune export of the same Maple dataset.
 export async function mapleAumReported() {
   const rows = await q(`
-    SELECT date::date AS day, deposits_usd, collateral_usd, deposits_usd + collateral_usd AS aum_usd
-    FROM dune.pool_aum_vs_deposits_over_time_protocol_totals
-    WHERE extract(dow FROM date::date) = 0 OR date::date = (SELECT max(date::date) FROM dune.pool_aum_vs_deposits_over_time_protocol_totals)
-    ORDER BY 1`);
+    SELECT day, deposits_usd, collateral_usd, aum_usd FROM aum_reported
+    WHERE extract(dow FROM day) = 0 OR day = (SELECT max(day) FROM aum_reported)
+    ORDER BY day`);
   return rows.map(num);
 }
 export async function poolsSnapshot() {
-  const rows = await q(`SELECT * FROM dune.pools_snapshot ORDER BY is_total, tvl DESC`);
+  const rows = await q(`
+    WITH s AS (SELECT * FROM maple_pool_state WHERE day = (SELECT max(day) FROM maple_pool_state) AND tvl_usd > 1000)
+    SELECT pool AS pool_name, tvl_usd AS tvl, tvl_usd / sum(tvl_usd) OVER () AS share_of_protocol_tvl,
+           tvl_usd - collateral_usd AS deposits_usd, collateral_usd, principal_out_usd AS loans_outstanding_usd,
+           principal_out_usd / NULLIF(tvl_usd - collateral_usd, 0) AS utilization, day
+    FROM s ORDER BY tvl_usd DESC`);
   return rows.map(num);
 }
 
