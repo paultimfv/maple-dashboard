@@ -469,8 +469,21 @@ export async function annualInputs() {
   const rows = await q(`SELECT *, mcap_year_end / NULLIF(total_revenue, 0) AS ps FROM annual_model_inputs WHERE year >= 2024 ORDER BY year`);
   return rows.map(num);
 }
+// circulating = totalSupply (contract) - Syrup Strategic Fund holdings (Maple-reported); matches CoinGecko's definition
 export async function syrupSupply() {
-  const rows = await q(`SELECT day, total_supply, maple_held, total_supply - maple_held AS circulating FROM syrup_supply ORDER BY day`);
+  const rows = await q(`
+    SELECT s.day, s.total_supply, f.syrup_held AS ssf_held, s.total_supply - coalesce(f.syrup_held, s.maple_held) AS circulating
+    FROM syrup_supply s
+    LEFT JOIN LATERAL (SELECT syrup_held FROM ssf_daily WHERE day <= s.day ORDER BY day DESC LIMIT 1) f ON true
+    ORDER BY s.day`);
+  return rows.map(num);
+}
+export async function ssfDaily() {
+  const rows = await q(`SELECT day, syrup_held, liquid_assets_usd FROM ssf_daily ORDER BY day`);
+  return rows.map(num);
+}
+export async function mapleBalanceSheet() {
+  const rows = await q(`SELECT * FROM maple_balance_sheet ORDER BY day DESC LIMIT 1`);
   return rows.map(num);
 }
 
@@ -481,7 +494,7 @@ export async function stablecoinSupplyGlobal() {
 }
 
 // ---- Maple-reported AUM = lender deposits + borrower collateral (collateral sits with custodians, not in pool contracts) ----
-// Live: Maple's API, daily (pipeline maple_pool_state). History before that: Dune export of the same Maple dataset.
+// Daily since 2023 from Maple's transparency page (pipeline maple_reported_aum).
 export async function mapleAumReported() {
   const rows = await q(`
     SELECT day, deposits_usd, collateral_usd, aum_usd FROM aum_reported

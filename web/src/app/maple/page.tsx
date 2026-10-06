@@ -1,4 +1,4 @@
-import { rhAum, earnAllocation, earnShare, interestWeekly, loansWeekly, shareOfUsdg, poolState, utilization, topLoans, syrupPrice, syrupBuybacks, revenueBridge, capitalOnChain, holders, mapleRevenueMonthly, mapleModelMonthly, mapleAumByPool, mapleAumLatest, annualInputs, syrupSupply, mapleAumReported, poolsSnapshot, mapleLenders, mapleBorrowers } from "@/lib/queries";
+import { rhAum, earnAllocation, earnShare, interestWeekly, loansWeekly, shareOfUsdg, poolState, utilization, topLoans, syrupPrice, syrupBuybacks, revenueBridge, capitalOnChain, holders, mapleRevenueMonthly, mapleModelMonthly, mapleAumByPool, mapleAumLatest, annualInputs, syrupSupply, mapleAumReported, poolsSnapshot, mapleLenders, mapleBorrowers, ssfDaily, mapleBalanceSheet } from "@/lib/queries";
 import { Counter, Card, StackedColumns, SimpleLine, StackedBars, BarsPlusLine, Table, StackedBarsWithLines } from "@/components/charts";
 import { fmtUsd, fmtPct } from "@/lib/fmt";
 
@@ -12,7 +12,9 @@ export default async function MaplePage() {
     mapleRevenueMonthly(), mapleModelMonthly(), mapleAumByPool(), mapleAumLatest(), annualInputs(), syrupSupply(), mapleAumReported(), poolsSnapshot(),
   ]);
   const ar = last(aumRep);
-  const [lenders, borrowers] = await Promise.all([mapleLenders(), mapleBorrowers()]);
+  const [lenders, borrowers, ssf, bsheet] = await Promise.all([mapleLenders(), mapleBorrowers(), ssfDaily(), mapleBalanceSheet()]);
+  const sf = last(ssf);
+  const bal = bsheet[0];
   const ln = last(lenders);
   const bw = last(borrowers);
   const yoy = <T extends Record<string, unknown>>(rows: T[], k: string) => {
@@ -70,7 +72,7 @@ export default async function MaplePage() {
             <StackedBarsWithLines data={rev} x="month" ys={["open_term_loans", "fixed_term_loans", "strategies", "otc_offchain"]}
               lines={[{ y: 1_500_000, label: "20% tier" }, { y: 2_000_000, label: "30% tier" }]} />
           </Card>
-          <Card title="AUM = lender deposits + borrower collateral (weekly; Maple API, earlier history via Dune)"><StackedBars data={aumRep} x="day" ys={["deposits_usd", "collateral_usd"]} /></Card>
+          <Card title="AUM = lender deposits + borrower collateral (weekly, Maple-reported since 2023)"><StackedBars data={aumRep} x="day" ys={["deposits_usd", "collateral_usd"]} /></Card>
           <Card title="Lender deposits by pool, month-end (pool totalAssets, live from contracts)"><StackedColumns data={aumPools} x="day" y="aum_usd" group="pool" /></Card>
           <Card title="P/S on trailing-12m revenue"><SimpleLine data={model.filter((x) => x.ps_ttm != null)} x="month" ys={["ps_ttm"]} fmt="mult" /></Card>
           <Card title="Revenue yield on AUM (annualised)"><SimpleLine data={model.filter((x) => x.revenue_yield_on_aum != null)} x="month" ys={["revenue_yield_on_aum"]} /></Card>
@@ -94,7 +96,7 @@ export default async function MaplePage() {
         </div>
         <p className="text-xs text-neutral-500">
           <span className="text-neutral-400">Onchain revenue</span> = open-term <code>ClaimedFundsDistributed</code> (platform + delegate fees) + fixed-term <code>ManagementFeesPaid</code> / <code>ServiceFeesPaid</code> / <code>OriginationFeesPaid</code> + strategy <code>StrategyFeesCollected</code>. WETH pools excluded.
-          {" "}<span className="text-neutral-400">OTC / offchain</span> = Maple&apos;s published OTC desk revenue through May 2026; from July 2026 implied from onchain buybacks (MIP-021 buyback ÷ tier − onchain fees). June 2026 has no offchain figure.
+          {" "}<span className="text-neutral-400">OTC / offchain</span> = Maple-reported monthly revenue (transparency page) − our onchain fees. It reconciles to Maple&apos;s published OTC desk revenue within ~$60k in most months.
         </p>
       </section>
 
@@ -155,16 +157,22 @@ export default async function MaplePage() {
         <h2 className="text-lg font-medium">SYRUP: value accrual</h2>
         <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
           <Counter label="SYRUP price" value={`$${n(sp?.price_usd).toFixed(4)}`} sub={`mcap ${fmtUsd(n(sp?.mcap_usd))}`} />
-          <Counter label="Circulating supply (onchain)" value={`${(n(sup?.circulating) / 1e6).toFixed(1)}M`} sub={`total ${(n(sup?.total_supply) / 1e6).toFixed(1)}M − DAO multisig ${(n(sup?.maple_held) / 1e6).toFixed(1)}M`} />
+          <Counter label="Circulating supply" value={`${(n(sup?.circulating) / 1e6).toFixed(1)}M`} sub={`total ${(n(sup?.total_supply) / 1e6).toFixed(1)}M (contract) − SSF ${(n(sup?.ssf_held) / 1e6).toFixed(1)}M (Maple)`} />
           <Counter label="Buybacks, all-time" value={fmtUsd(bbTotal)} sub={`${buybacks.length} months · through ${String(last(buybacks)?.month ?? "").slice(0, 7)}`} />
           <Counter label="MIP-021 tier, last month" value={fmtPct(n(m?.mip021_tier))} sub={`on ${fmtUsd(n(m?.total_revenue))} revenue: 10% < $1.5M · 20% < $2M · 30% above`} />
         </div>
+        <div className="grid grid-cols-2 gap-4 md:grid-cols-3">
+          <Counter label="Syrup Strategic Fund" value={`${(n(sf?.syrup_held) / 1e6).toFixed(1)}M SYRUP`} sub={`+ ${fmtUsd(n(sf?.liquid_assets_usd))} liquid assets · ${String(sf?.day ?? "").slice(0, 10)}`} />
+          <Counter label="Maple balance sheet" value={fmtUsd(n(bal?.syrup_usd) + n(bal?.liquid_assets_usd))} sub={`${(n(bal?.syrup_amount) / 1e6).toFixed(1)}M SYRUP (${fmtUsd(n(bal?.syrup_usd))}) + ${fmtUsd(n(bal?.liquid_assets_usd))} liquid`} />
+          <Counter label="SSF SYRUP, change since Aug 2025" value={`${((n(sf?.syrup_held) - n(ssf[0]?.syrup_held)) / 1e6).toFixed(1)}M`} sub="vs SYRUP bought back over the same period (table)" />
+        </div>
         <div className="grid gap-4 md:grid-cols-2">
           <Card title="SYRUP price"><SimpleLine data={syrup} x="day" ys={["price_usd"]} fmt="rate" /></Card>
+          <Card title="Syrup Strategic Fund: SYRUP held (Maple-reported)"><SimpleLine data={ssf} x="day" ys={["syrup_held"]} fmt="raw" /></Card>
           <Card title="SYRUP buybacks by month (bars) and average price (line)"><BarsPlusLine data={buybacks} x="month" bar="amount_usd" line="avg_price" /></Card>
         </div>
         <p className="text-xs text-neutral-500">
-          Buyback amounts are Maple-published. June, July and August 2026 are verified onchain: each matches a SYRUP withdrawal from Binance that ends in the same wallet (0x99f0…a9ca), within a few tokens (July exactly). Maple executes buybacks on a centralised exchange, not onchain.
+          Buyback amounts and SSF holdings are Maple-reported (transparency page). June, July and August 2026 are verified onchain: each matches a SYRUP withdrawal from Binance that ends in the same wallet (0x99f0…a9ca), within a few tokens (July exactly). Maple executes buybacks on a centralised exchange, not onchain.
         </p>
       </section>
     </main>
