@@ -10,6 +10,7 @@ export const metadata: Metadata = {
 const nav = [
   { href: "/", label: "Macro" },
   { href: "/maple", label: "Maple Finance + SYRUP" },
+  { href: "/model", label: "SYRUP model" },
 ];
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
