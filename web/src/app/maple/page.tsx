@@ -122,7 +122,7 @@ export default async function MaplePage() {
       </Section>
 
       {/* ---------------------------------------------------------------- Robinhood channel */}
-      <Section n="03" title="syrupUSDG × Robinhood Earn">
+      <Section n="03" tone="rh" title="syrupUSDG × Robinhood Earn">
         <Counters cols="md:grid-cols-3">
           <Counter label="syrupUSDG pool AUM" value={fmtUsd(n(p?.total_assets))} sub={`exch rate ${n(p?.exch_rate || 1).toFixed(4)}`} />
           <Counter label="On Robinhood Chain" value={fmtUsd(aumRh)} sub={`${fmtPct(aumRh / (n(p?.total_assets) || 1))} of pool`} />
@@ -138,12 +138,12 @@ export default async function MaplePage() {
           <Card title="Robinhood Earn TVL by collateral"><StackedColumns data={alloc} x="day" y="allocated_usdg" group="collateral" /></Card>
           <Card title="syrupUSDG share of Robinhood Earn"><SimpleLine data={share} x="day" ys={["maple_share_of_earn"]} /></Card>
           <Card title="Maple AUM on Robinhood Chain"><StackedColumns data={aum} x="day" y="aum_usd" group="token" /></Card>
-          <Card title="syrupUSDG pool AUM vs loans outstanding"><SimpleLine data={util} x="day" ys={["total_assets", "loans_outstanding"]} fmt="usd" /></Card>
-          <Card title="syrupUSDG interest, weekly" sub="who gets it"><StackedBars data={interest} x="week" ys={["interest_to_depositors_usd", "delegate_fee_usd", "maple_fee_usd"]} /></Card>
-          <Card title="syrupUSDG utilization"><SimpleLine data={util} x="day" ys={["utilization"]} /></Card>
-          <Card title="syrupUSDG loans originated, weekly"><StackedBars data={loans} x="week" ys={["originated_usd"]} /></Card>
-          <Card title="syrupUSDG loans outstanding"><SimpleLine data={loans.filter((x) => x.principal_outstanding_usd != null)} x="week" ys={["principal_outstanding_usd"]} fmt="usd" /></Card>
-          <Card wide title="syrupUSDG exchange rate"><SimpleLine data={pool} x="day" ys={["exch_rate"]} fmt="rate" /></Card>
+          <Card tone="maple" title="syrupUSDG pool AUM vs loans outstanding"><SimpleLine data={util} x="day" ys={["total_assets", "loans_outstanding"]} fmt="usd" /></Card>
+          <Card tone="maple" title="syrupUSDG interest, weekly" sub="who gets it"><StackedBars data={interest} x="week" ys={["interest_to_depositors_usd", "delegate_fee_usd", "maple_fee_usd"]} /></Card>
+          <Card tone="maple" title="syrupUSDG utilization"><SimpleLine data={util} x="day" ys={["utilization"]} /></Card>
+          <Card tone="maple" title="syrupUSDG loans originated, weekly"><StackedBars data={loans} x="week" ys={["originated_usd"]} /></Card>
+          <Card tone="maple" title="syrupUSDG loans outstanding"><SimpleLine data={loans.filter((x) => x.principal_outstanding_usd != null)} x="week" ys={["principal_outstanding_usd"]} fmt="usd" /></Card>
+          <Card wide tone="maple" title="syrupUSDG exchange rate"><SimpleLine data={pool} x="day" ys={["exch_rate"]} fmt="rate" /></Card>
         </div>
         <Panel title="syrupUSDG: top loans by interest generated">
           <Table rows={top} cols={[

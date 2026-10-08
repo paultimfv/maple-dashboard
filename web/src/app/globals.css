@@ -1,52 +1,66 @@
 @import "tailwindcss";
 
-/* Design tokens. Light is the default; dark is a selected set, not an inversion.
+/* Design tokens, Maple-inspired: white page, soft grey cards, coral / salmon / peach accents.
+   Light is the default; dark is a selected set, not an inversion.
    data-theme on <html> (set by the toggle) wins over the OS setting both ways. */
 :root {
   color-scheme: light;
-  --page: #f6f6f3;
-  --surface: #ffffff;
-  --wash: #efeee9;
-  --ink: #0b0b0b;
-  --ink-2: #52514e;
-  --muted: #898781;
-  --line: #e4e3dc;
-  --line-strong: #c9c8bf;
-  --accent: #2a78d6;
-  --up: #006300;
+  --page: #ffffff;
+  --surface: #f6f6f6;
+  --wash: #fdefe8;
+  --ink: #141414;
+  --ink-2: #4b4847;
+  --muted: #8a8683;
+  --line: #ebe9e7;
+  --line-strong: #d6d2ce;
+  --accent: #f26b3a;
+  --accent-ink: #c4501f;
+  --salmon: #fdaa8a;
+  --peach: #fdd9c6;
+  --up: #2f7d32;
   --down: #c23434;
+  --rh: #ccff00;
+  --rh-ink: #4f7300;
 }
 
 @media (prefers-color-scheme: dark) {
   :root:where(:not([data-theme="light"])) {
     color-scheme: dark;
-    --page: #0b0b0a;
-    --surface: #141413;
-    --wash: #1f1f1d;
-    --ink: #f4f4f1;
-    --ink-2: #c3c2b7;
-    --muted: #8a8982;
-    --line: #262624;
-    --line-strong: #3a3a37;
-    --accent: #3987e5;
-    --up: #2fbf2f;
+    --page: #0f0e0d;
+    --surface: #181614;
+    --wash: #2a1c15;
+    --ink: #f6f3f0;
+    --ink-2: #c9c3be;
+    --muted: #8d8681;
+    --line: #2a2724;
+    --line-strong: #3d3833;
+    --accent: #fb7a4c;
+    --accent-ink: #fb8a60;
+    --salmon: #c8684a;
+    --peach: #6e3a26;
+    --up: #3fbf5a;
     --down: #e66767;
+    --rh-ink: #ccff00;
   }
 }
 
 :root[data-theme="dark"] {
   color-scheme: dark;
-  --page: #0b0b0a;
-  --surface: #141413;
-  --wash: #1f1f1d;
-  --ink: #f4f4f1;
-  --ink-2: #c3c2b7;
-  --muted: #8a8982;
-  --line: #262624;
-  --line-strong: #3a3a37;
-  --accent: #3987e5;
-  --up: #2fbf2f;
+  --page: #0f0e0d;
+  --surface: #181614;
+  --wash: #2a1c15;
+  --ink: #f6f3f0;
+  --ink-2: #c9c3be;
+  --muted: #8d8681;
+  --line: #2a2724;
+  --line-strong: #3d3833;
+  --accent: #fb7a4c;
+  --accent-ink: #fb8a60;
+  --salmon: #c8684a;
+  --peach: #6e3a26;
+  --up: #3fbf5a;
   --down: #e66767;
+  --rh-ink: #ccff00;
 }
 
 @theme inline {
@@ -59,6 +73,11 @@
   --color-line: var(--line);
   --color-line-strong: var(--line-strong);
   --color-accent: var(--accent);
+  --color-accent-ink: var(--accent-ink);
+  --color-salmon: var(--salmon);
+  --color-peach: var(--peach);
+  --color-rh: var(--rh);
+  --color-rh-ink: var(--rh-ink);
   --color-up: var(--up);
   --color-down: var(--down);
   --font-sans: var(--font-geist-sans);

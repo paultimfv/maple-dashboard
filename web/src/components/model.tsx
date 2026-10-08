@@ -165,8 +165,9 @@ export default function Model({ inp }: { inp: ModelInputs }) {
                     <YAxis tickFormatter={(v) => usd(Number(v))} tick={tick} tickLine={false} axisLine={false} width={58} />
                     <Tooltip cursor={{ fill: pal.grid, fillOpacity: 0.4 }} contentStyle={tipStyle} labelStyle={{ color: pal.ink, fontWeight: 600 }} itemStyle={{ color: pal.ink2, padding: 0 }} formatter={(v) => usd(Number(v))} />
                     <Legend iconType="square" iconSize={8} align="left" verticalAlign="top" itemSorter={null} wrapperStyle={{ paddingBottom: 8 }} formatter={(v) => <span style={{ color: pal.ink2, fontSize: 11.5 }}>{String(v)}</span>} />
-                    {(["core credit", "Robinhood channel", "offchain"] as const).map((k, i) => (
-                      <Bar key={k} dataKey={k} stackId="r" fill={pal.series[i]} maxBarSize={40} stroke={pal.surface} strokeWidth={1} radius={i === 2 ? [3, 3, 0, 0] : 0} isAnimationActive={false} />
+                    {/* core credit = Maple coral, Robinhood channel = Robinhood green, offchain blue sits between so the two never touch */}
+                    {([["core credit", pal.entity.maple], ["offchain", pal.series[1]], ["Robinhood channel", pal.entity.rh]] as const).map(([k, c], i) => (
+                      <Bar key={k} dataKey={k} stackId="r" fill={c} maxBarSize={40} stroke={pal.surface} strokeWidth={1} radius={i === 2 ? [3, 3, 0, 0] : 0} isAnimationActive={false} />
                     ))}
                   </BarChart>
                 </ResponsiveContainer>

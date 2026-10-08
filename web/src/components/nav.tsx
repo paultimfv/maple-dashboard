@@ -51,7 +51,7 @@ export default function Nav() {
     <nav className="sticky top-0 z-20 border-b border-line bg-page/85 backdrop-blur">
       <div className="mx-auto flex max-w-6xl items-center gap-6 px-4 text-sm">
         <span className="py-3 font-mono text-[12px] font-medium uppercase tracking-wider text-ink">
-          <span className="text-accent">■</span> Maple × Robinhood
+          Maple × Robinhood
         </span>
         <div className="flex gap-5">
           {nav.map((n) => {

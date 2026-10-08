@@ -1,24 +1,40 @@
 "use client";
-import { useEffect, useState } from "react";
+import { createContext, useContext, useEffect, useState } from "react";
 import {
-  ResponsiveContainer, AreaChart, Area, BarChart, Bar, LineChart, Line, ComposedChart,
+  ResponsiveContainer, AreaChart, Area, BarChart, Bar, Cell, LineChart, Line, ComposedChart,
   XAxis, YAxis, Tooltip, Legend, CartesianGrid, ReferenceLine,
 } from "recharts";
 import { fmtUsd, fmtPct } from "@/lib/fmt";
 
 type Row = Record<string, unknown>;
 
-/* Validated categorical palette (dataviz reference, fixed order, never cycled past 5).
-   Light vs #ffffff, dark vs #141413: all checks pass; light aqua/yellow/magenta sit below 3:1,
-   so every chart keeps a legend + tooltip and the tables carry the values. */
-const PALETTE = {
-  light: { series: ["#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4"], other: "#c9c8bf", surface: "#ffffff", grid: "#ecebe5", axis: "#898781", ink: "#0b0b0b", ink2: "#52514e", ref: "#898781" },
-  dark: { series: ["#3987e5", "#d95926", "#199e70", "#c98500", "#d55181"], other: "#4a4a46", surface: "#141413", grid: "#232321", axis: "#8a8982", ink: "#f4f4f1", ink2: "#c3c2b7", ref: "#8a8982" },
+/* Two validated categorical palettes, fixed order, never cycled past 5 (validator: all checks pass in both modes).
+   "maple" leads with Maple coral; "rh" (Robinhood sections) leads with Robinhood green and keeps blue between green
+   and coral, the pair colorblind readers confuse. Light coral/amber/green sit below 3:1 on the card, so every chart
+   keeps a legend + tooltip and the tables carry the values. Brand lime (#ccff00) is for UI accents only, never marks. */
+const BASE = {
+  light: { other: "#d6d2ce", surface: "#f6f6f6", grid: "#e6e3e0", axis: "#8a8683", ink: "#141414", ink2: "#4b4847", ref: "#8a8683" },
+  dark: { other: "#4a4440", surface: "#181614", grid: "#2a2724", axis: "#8d8681", ink: "#f6f3f0", ink2: "#c9c3be", ref: "#8d8681" },
 };
-type Pal = (typeof PALETTE)["light"];
+const SERIES = {
+  maple: { light: ["#f26b3a", "#2b6cb0", "#e8a33a", "#a8402a", "#1f9e8a"], dark: ["#e8663a", "#4b8fe0", "#bf8418", "#b83c3c", "#1f9e88"] },
+  rh: { light: ["#6e9e00", "#2b6cb0", "#f26b3a", "#7a4fc9", "#e8a33a"], dark: ["#79a600", "#4b8fe0", "#e8663a", "#8a6be0", "#bf8418"] },
+};
+/* color follows the entity: Maple's tokens are always coral, Robinhood's USDG always green */
+const ENTITY = { light: { maple: "#f26b3a", rh: "#6e9e00" }, dark: { maple: "#e8663a", rh: "#79a600" } };
+const entityOf = (k: string): "maple" | "rh" | null => (/^syrup/i.test(k) ? "maple" : k === "USDG" ? "rh" : null);
+
+export type Tone = "maple" | "rh";
+const ToneCtx = createContext<Tone>("maple");
+/** sets the chart palette (and section accent) for everything inside */
+export function ToneScope({ tone, children }: { tone: Tone; children: React.ReactNode }) {
+  return <ToneCtx.Provider value={tone}>{children}</ToneCtx.Provider>;
+}
+type Pal = (typeof BASE)["light"] & { series: string[]; entity: { maple: string; rh: string } };
 
 /** follows the <html data-theme> toggle and the OS setting */
 export function usePalette(): Pal {
+  const tone = useContext(ToneCtx);
   const [dark, setDark] = useState(false);
   useEffect(() => {
     const mq = matchMedia("(prefers-color-scheme: dark)");
@@ -32,12 +48,24 @@ export function usePalette(): Pal {
     mq.addEventListener("change", read);
     return () => { mo.disconnect(); mq.removeEventListener("change", read); };
   }, []);
-  return dark ? PALETTE.dark : PALETTE.light;
+  const m = dark ? "dark" : "light";
+  return { ...BASE[m], series: SERIES[tone][m], entity: ENTITY[m] };
 }
 
 /** series named here render grey and go last in the stack (i.e. on top), so they don't interrupt the real buckets */
 const MUTED_KEYS = new Set(["other"]);
-const colorOf = (pal: Pal, k: string, i: number) => (MUTED_KEYS.has(k) ? pal.other : pal.series[Math.min(i, pal.series.length - 1)]);
+/** key → color: entity keys take their entity color, "other" is grey, the rest take palette slots in order (skipping used ones) */
+function colorsFor(pal: Pal, keys: string[]) {
+  const out = new Map<string, string>(), used = new Set<string>();
+  for (const k of keys) { const e = entityOf(k); if (e) { out.set(k, pal.entity[e]); used.add(pal.entity[e]); } }
+  const free = pal.series.filter((c) => !used.has(c));
+  let i = 0;
+  for (const k of keys) {
+    if (out.has(k)) continue;
+    out.set(k, MUTED_KEYS.has(k) ? pal.other : free[Math.min(i++, free.length - 1)] ?? pal.series[0]);
+  }
+  return out;
+}
 
 /* readable names for column keys; anything unlisted falls back to "snake case → words" */
 const LABELS: Record<string, string> = {
@@ -53,7 +81,7 @@ const LABELS: Record<string, string> = {
   new_accounts: "New", active_accounts: "Active", l1_cost_usd: "L1 cost", sequencer_margin_usd: "Margin", new_aa_wallets: "Smart wallets",
   speculation: "Speculation", finance: "Finance", minted: "Minted", burned: "Burned", cumulative_shares: "Shares outstanding",
   allocated_usdg: "Allocated", new_users: "New", active_users: "Active", deposited_usd: "Deposited", net_flow_usd: "Net flow",
-  bridged_in: "Bridged in", bridged_out: "Bridged out", cumulative_users: "Users", fees_usd: "Fees", share: "Share",
+  usdg_native: "USDG minted", fees_usd: "Gas fees", bridged_in: "Bridged in", bridged_out: "Bridged out", cumulative_users: "Users", share: "Share",
 };
 export const label = (k: string) => LABELS[k] ?? k.replace(/_usd$/, "").replace(/_/g, " ");
 
@@ -98,7 +126,8 @@ export function Counters({ cols = "md:grid-cols-3 lg:grid-cols-6", children }: {
   return <div className={`grid grid-cols-2 gap-px overflow-hidden rounded-[3px] border border-line bg-line ${cols}`}>{children}</div>;
 }
 
-export function Card({ title, sub, children, tall, wide }: { title: string; sub?: string; children: React.ReactNode; tall?: boolean; wide?: boolean }) {
+export function Card({ title, sub, children, tall, wide, tone }: { title: string; sub?: string; children: React.ReactNode; tall?: boolean; wide?: boolean; tone?: Tone }) {
+  if (tone) return <ToneScope tone={tone}><Card title={title} sub={sub} tall={tall} wide={wide}>{children}</Card></ToneScope>;
   return (
     <div className={`rounded-[3px] border border-line bg-surface p-4 ${wide ? "md:col-span-2" : ""}`}>
       <div className="mb-2">
@@ -122,16 +151,20 @@ export function Panel({ title, sub, children }: { title: string; sub?: string; c
   );
 }
 
-export function Section({ n, title, lede, children }: { n: string; title: string; lede?: string; children: React.ReactNode }) {
+export function Section({ n, title, lede, tone = "maple", children }: { n: string; title: string; lede?: string; tone?: Tone; children: React.ReactNode }) {
   return (
+    <ToneScope tone={tone}>
     <section className="space-y-4">
       <div className="flex items-baseline gap-3 border-b border-line pb-2">
-        <span className="font-mono text-[11px] text-accent">{n}</span>
+        {tone === "rh"
+          ? <span className="self-center rounded-[2px] bg-rh px-1.5 py-px font-mono text-[11px] font-medium text-black">{n}</span>
+          : <span className="font-mono text-[11px] text-accent-ink">{n}</span>}
         <h2 className="text-[17px] font-semibold tracking-tight">{title}</h2>
       </div>
       {lede && <p className="max-w-3xl text-[13px] leading-relaxed text-ink-2">{lede}</p>}
       {children}
     </section>
+    </ToneScope>
   );
 }
 
@@ -140,6 +173,47 @@ export function Note({ children }: { children: React.ReactNode }) {
 }
 
 const M = { top: 4, right: 14, left: 0, bottom: 0 };
+/** past this many x points, bars get thinner than their gap; stacks switch to stacked areas */
+const DENSE = 60;
+
+function Areas({ pal, data, x, keys, fmt }: { pal: Pal; data: Row[]; x: string; keys: string[]; fmt: Fmt }) {
+  const col = colorsFor(pal, keys);
+  return (
+    <ResponsiveContainer>
+      <AreaChart data={data} margin={M}>
+        {chrome(pal, fmt, x, keys.length > 1)}
+        {keys.map((k) => <Area key={k} dataKey={k} stackId="1" stroke={col.get(k)} strokeWidth={1.5} fill={col.get(k)} fillOpacity={0.35} isAnimationActive={false} />)}
+      </AreaChart>
+    </ResponsiveContainer>
+  );
+}
+
+/** stacked areas over named columns (absolute amounts) */
+export function StackedAreas({ data, x, ys, fmt = "usd" }: { data: Row[]; x: string; ys: string[]; fmt?: Fmt }) {
+  const pal = usePalette();
+  return <Areas pal={pal} data={data} x={x} keys={ys} fmt={fmt} />;
+}
+
+/** one bar per category; `highlight` keys get their entity color, the rest stay neutral */
+export function CategoryBars({ data, x, y, fmt = "usd", highlight = [] }: { data: Row[]; x: string; y: string; fmt?: Fmt; highlight?: string[] }) {
+  const pal = usePalette();
+  const tick = { fill: pal.axis, fontSize: 10.5, fontFamily: "var(--font-geist-mono)" };
+  return (
+    <ResponsiveContainer>
+      <BarChart data={data} margin={M}>
+        <CartesianGrid stroke={pal.grid} vertical={false} />
+        <XAxis dataKey={x} interval={0} tick={tick} tickLine={false} axisLine={{ stroke: pal.grid }} />
+        <YAxis tickFormatter={AX[fmt]} width={58} tick={tick} tickLine={false} axisLine={false} />
+        <Tooltip cursor={{ fill: pal.grid, fillOpacity: 0.4 }} contentStyle={{ background: pal.surface, border: `1px solid ${pal.grid}`, borderRadius: 3, fontSize: 12 }}
+          labelStyle={{ color: pal.ink, fontWeight: 600 }} itemStyle={{ color: pal.ink2, padding: 0 }} formatter={(v) => [F[fmt](Number(v)), label(y)]} />
+        <Bar dataKey={y} maxBarSize={48} radius={[3, 3, 0, 0]} isAnimationActive={false}>
+          {data.map((r) => { const k = String(r[x]), e = entityOf(k);
+            return <Cell key={k} fill={highlight.includes(k) && e ? pal.entity[e] : highlight.includes(k) ? pal.series[0] : pal.other} />; })}
+        </Bar>
+      </BarChart>
+    </ResponsiveContainer>
+  );
+}
 
 /** long → wide pivot for the stacked-by-category charts */
 function pivot(data: Row[], x: string, y: string, group: string, max = 4) {
@@ -164,8 +238,9 @@ function pivot(data: Row[], x: string, y: string, group: string, max = 4) {
 
 /* bars: capped thickness, 4px rounded data-end on the top segment only, 1px surface gap between segments */
 function bars(pal: Pal, keys: string[]) {
+  const col = colorsFor(pal, keys);
   return keys.map((k, i) => (
-    <Bar key={k} dataKey={k} stackId="1" fill={colorOf(pal, k, i)} maxBarSize={24} stroke={pal.surface} strokeWidth={1}
+    <Bar key={k} dataKey={k} stackId="1" fill={col.get(k)} maxBarSize={24} stroke={pal.surface} strokeWidth={1}
       radius={i === keys.length - 1 ? [3, 3, 0, 0] : 0} isAnimationActive={false} />
   ));
 }
@@ -178,7 +253,7 @@ export function StackedArea({ data, x, y, group, fmt = "pct" }: { data: Row[]; x
     <ResponsiveContainer>
       <AreaChart data={wide} margin={M}>
         {chrome(pal, fmt, x, true)}
-        {keys.map((k, i) => <Area key={k} dataKey={k} stackId="1" stroke={colorOf(pal, k, i)} strokeWidth={1.5} fill={colorOf(pal, k, i)} fillOpacity={0.18} isAnimationActive={false} />)}
+        {(() => { const col = colorsFor(pal, keys); return keys.map((k) => <Area key={k} dataKey={k} stackId="1" stroke={col.get(k)} strokeWidth={1.5} fill={col.get(k)} fillOpacity={0.18} isAnimationActive={false} />); })()}
       </AreaChart>
     </ResponsiveContainer>
   );
@@ -188,6 +263,7 @@ export function StackedArea({ data, x, y, group, fmt = "pct" }: { data: Row[]; x
 export function StackedColumns({ data, x, y, group, fmt = "usd" }: { data: Row[]; x: string; y: string; group: string; fmt?: Fmt }) {
   const pal = usePalette();
   const { keys, wide } = pivot(data, x, y, group);
+  if (wide.length > DENSE) return <Areas pal={pal} data={wide} x={x} keys={keys} fmt={fmt} />;
   return (
     <ResponsiveContainer>
       <BarChart data={wide} margin={M}>
@@ -228,7 +304,7 @@ export function SimpleLine({ data, x, ys, fmt = "pct" }: { data: Row[]; x: strin
     <ResponsiveContainer>
       <LineChart data={data} margin={M}>
         {chrome(pal, fmt, x, true)}
-        {ys.map((y, i) => <Line key={y} dataKey={y} stroke={pal.series[i]} dot={false} strokeWidth={2} activeDot={{ r: 4, stroke: pal.surface, strokeWidth: 2 }} isAnimationActive={false} />)}
+        {ys.map((y) => <Line key={y} dataKey={y} stroke={colorsFor(pal, ys).get(y)} dot={false} strokeWidth={2} activeDot={{ r: 4, stroke: pal.surface, strokeWidth: 2 }} isAnimationActive={false} />)}
       </LineChart>
     </ResponsiveContainer>
   );
@@ -236,6 +312,7 @@ export function SimpleLine({ data, x, ys, fmt = "pct" }: { data: Row[]; x: strin
 
 export function StackedBars({ data, x, ys, fmt = "usd" }: { data: Row[]; x: string; ys: string[]; fmt?: Fmt }) {
   const pal = usePalette();
+  if (data.length > DENSE) return <Areas pal={pal} data={data} x={x} keys={ys} fmt={fmt} />;
   return (
     <ResponsiveContainer>
       <BarChart data={data} margin={M}>
