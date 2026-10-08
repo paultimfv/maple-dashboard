@@ -1,6 +1,7 @@
 "use client";
 import { useMemo, useState } from "react";
-import { ResponsiveContainer, ComposedChart, Bar, Line, XAxis, YAxis, Tooltip, Legend, CartesianGrid } from "recharts";
+import { ResponsiveContainer, BarChart, AreaChart, Area, Bar, XAxis, YAxis, Tooltip, Legend, CartesianGrid, ReferenceLine } from "recharts";
+import { usePalette } from "@/components/charts";
 import type { ModelInputs } from "@/lib/queries";
 import { fmtUsd } from "@/lib/fmt";
 
@@ -60,12 +61,12 @@ function Slider({ id, label, value, min, max, step, fmt, onChange, hint }: {
   return (
     <div className="grid gap-1.5">
       <div className="flex items-baseline justify-between gap-3">
-        <label htmlFor={id} className="text-sm text-neutral-300">{label}</label>
-        <span className="font-mono text-sm tabular-nums text-neutral-100">{fmt(value)}</span>
+        <label htmlFor={id} className="text-sm text-ink-2">{label}</label>
+        <span className="font-mono text-sm tabular-nums text-ink">{fmt(value)}</span>
       </div>
       <input id={id} type="range" min={min} max={max} step={step} value={value} onChange={(e) => onChange(Number(e.target.value))}
-        className="w-full accent-[#7c9cff] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#7c9cff]" />
-      {hint && <div className="text-xs text-neutral-500">{hint}</div>}
+        className="w-full" />
+      {hint && <div className="text-xs text-muted">{hint}</div>}
     </div>
   );
 }
@@ -96,83 +97,102 @@ export default function Model({ inp }: { inp: ModelInputs }) {
     return { ss, ms, cells: ss.map((s) => ms.map((m) => run(inp, { ...p, s2030: s, ps: m }, true)[4].price)) };
   }, [inp, p]);
 
+  const pal = usePalette();
+  const tick = { fill: pal.axis, fontSize: 10.5, fontFamily: "var(--font-geist-mono)" };
+  const tipStyle = { background: pal.surface, border: `1px solid ${pal.grid}`, borderRadius: 3, fontSize: 12 };
+
   const chart = rows.map((r) => ({ year: r.year, "core credit": r.coreRev, "Robinhood channel": r.rhRev, offchain: r.offRev, price: r.price }));
 
   return (
     <div className="grid gap-8">
       {/* headline */}
-      <div className="grid gap-4 md:grid-cols-[1.2fr_1fr_1fr_1fr]">
-        <div className="rounded-lg border border-neutral-800 bg-neutral-900/60 p-5">
-          <div className="text-xs uppercase tracking-wide text-neutral-400">SYRUP price, 2030</div>
-          <div className="mt-1 text-4xl font-semibold tabular-nums">{px(end.price)}</div>
-          <div className={`mt-1 text-sm ${mult >= 1 ? "text-emerald-400" : "text-rose-400"}`}>{mult.toFixed(1)}x today&apos;s ${inp.price.toFixed(3)}</div>
+      <div className="grid gap-px overflow-hidden rounded-[3px] border border-line bg-line md:grid-cols-[1.3fr_1fr_1fr_1fr]">
+        <div className="bg-surface p-5">
+          <div className="font-mono text-[10.5px] uppercase tracking-wider text-muted">SYRUP price, 2030</div>
+          <div className="mt-2 text-5xl font-semibold tracking-tight">{px(end.price)}</div>
+          <div className={`mt-1 text-sm ${mult >= 1 ? "text-up" : "text-down"}`}>{mult.toFixed(1)}x today&apos;s ${inp.price.toFixed(3)}</div>
         </div>
         {[["Revenue, 2030", usd(end.revenue), `vs ${usd(rows[0].revenue)} TTM`],
           ["Buybacks, 2030", usd(end.buybacks), `MIP-021 tier ${pct(end.tier, 0)}`],
           ["Market cap, 2030", usd(end.mcap), `${p.ps.toFixed(1)}x revenue`]].map(([l, v, s]) => (
-          <div key={l} className="rounded-lg border border-neutral-800 bg-neutral-900/60 p-5">
-            <div className="text-xs uppercase tracking-wide text-neutral-400">{l}</div>
-            <div className="mt-1 text-2xl font-semibold tabular-nums">{v}</div>
-            <div className="mt-1 text-xs text-neutral-500">{s}</div>
+          <div key={l} className="bg-surface p-5">
+            <div className="font-mono text-[10.5px] uppercase tracking-wider text-muted">{l}</div>
+            <div className="mt-2 text-2xl font-semibold tracking-tight">{v}</div>
+            <div className="mt-1 text-xs text-muted">{s}</div>
           </div>
         ))}
       </div>
 
       <div className="grid gap-6 lg:grid-cols-[340px_1fr]">
         {/* controls */}
-        <div className="grid content-start gap-5 rounded-lg border border-neutral-800 bg-neutral-900/60 p-5">
+        <div className="grid content-start gap-5 rounded-[3px] border border-line bg-surface p-5">
           <div className="flex flex-wrap gap-2">
             {presets.map((x) => (
               <button key={x.name} onClick={() => setP(x.p)} title={x.desc}
-                className="rounded-md border border-neutral-700 px-3 py-1.5 text-sm text-neutral-200 hover:border-neutral-500 hover:bg-neutral-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#7c9cff]">
+                className="rounded-md border border-line-strong px-3 py-1.5 text-sm text-ink hover:border-ink-2 hover:bg-wash">
                 {x.name}
               </button>
             ))}
           </div>
-          <div className="text-xs font-medium uppercase tracking-wide text-neutral-500">Market</div>
+          <div className="border-t border-line pt-3 font-mono text-[10.5px] uppercase tracking-wider text-muted">Market</div>
           <Slider id="s2030" label="Stablecoins in 2030" value={p.s2030} min={0.5e12} max={5e12} step={0.1e12} fmt={usd} onChange={set("s2030")} hint={`Today ${usd(inp.stablecoins)} · Bessent: $3T`} />
           <Slider id="s2028" label="Stablecoins in 2028" value={p.s2028} min={0.4e12} max={4e12} step={0.1e12} fmt={usd} onChange={set("s2028")} hint="Bessent: $2T" />
-          <div className="text-xs font-medium uppercase tracking-wide text-neutral-500">Maple</div>
+          <div className="border-t border-line pt-3 font-mono text-[10.5px] uppercase tracking-wider text-muted">Maple</div>
           <Slider id="share" label="Maple core share of stablecoins" value={p.coreShare} min={0.002} max={0.012} step={0.0001} fmt={(v) => pct(v)} onChange={set("coreShare")} hint={`Today ${pct(base.coreShare)} · end-2025 ${pct(inp.coreShare2025)}`} />
           <Slider id="take" label="Core take rate (revenue ÷ deposits)" value={p.takeRate} min={0.004} max={0.014} step={0.0001} fmt={(v) => pct(v)} onChange={set("takeRate")} hint={`Last 3 months ${pct(inp.takeRateQ)}`} />
           <Slider id="off" label="Offchain revenue per month" value={p.offchainMonthly} min={0} max={1.5e6} step={25000} fmt={usd} onChange={set("offchainMonthly")} hint={`Last 3 months ${usd(inp.offchainMonthlyQ)} · trailing year ${usd(inp.ttmOffchain / 12)}`} />
-          <div className="text-xs font-medium uppercase tracking-wide text-neutral-500">Robinhood Earn</div>
+          <div className="border-t border-line pt-3 font-mono text-[10.5px] uppercase tracking-wider text-muted">Robinhood Earn</div>
           <Slider id="earn" label="Earn TVL in 2030" value={p.earn2030} min={0.5e9} max={20e9} step={0.5e9} fmt={usd} onChange={set("earn2030")} hint={`Today ${usd(inp.earnTvl)}`} />
           <Slider id="syr" label="syrupUSDG share of Earn" value={p.syrupShare} min={0.05} max={0.6} step={0.01} fmt={(v) => pct(v, 0)} onChange={set("syrupShare")} hint={`Today ${pct(base.syrupShare, 1)}`} />
-          <div className="text-xs font-medium uppercase tracking-wide text-neutral-500">Valuation</div>
+          <div className="border-t border-line pt-3 font-mono text-[10.5px] uppercase tracking-wider text-muted">Valuation</div>
           <Slider id="ps" label="P/S multiple" value={p.ps} min={5} max={40} step={0.5} fmt={(v) => `${v.toFixed(1)}x`} onChange={set("ps")} hint={`Today ${base.ps.toFixed(1)}x · 2-year median ${inp.psMedian.toFixed(1)}x`} />
-          <label className="flex items-center gap-2 text-sm text-neutral-300">
-            <input id="retire" type="checkbox" checked={p.retire} onChange={(e) => set("retire")(e.target.checked)} className="accent-[#7c9cff]" />
+          <label className="flex items-center gap-2 text-sm text-ink-2">
+            <input id="retire" type="checkbox" checked={p.retire} onChange={(e) => set("retire")(e.target.checked)} className="" />
             Bought-back tokens leave circulation
           </label>
         </div>
 
         {/* outputs */}
         <div className="grid content-start gap-6">
-          <div className="rounded-lg border border-neutral-800 bg-neutral-900/60 p-4">
-            <div className="mb-3 text-sm font-medium text-neutral-300">Revenue by source (bars) and SYRUP price (line)</div>
-            <div className="h-72">
-              <ResponsiveContainer>
-                <ComposedChart data={chart}>
-                  <CartesianGrid stroke="#222" vertical={false} />
-                  <XAxis dataKey="year" stroke="#666" fontSize={11} />
-                  <YAxis yAxisId="l" tickFormatter={(v) => usd(Number(v))} stroke="#666" fontSize={11} width={64} />
-                  <YAxis yAxisId="r" orientation="right" tickFormatter={(v) => px(Number(v))} stroke="#666" fontSize={11} width={52} />
-                  <Tooltip contentStyle={{ background: "#141414", border: "1px solid #333", fontSize: 12 }}
-                    formatter={(v, n) => (n === "price" ? px(Number(v)) : usd(Number(v)))} />
-                  <Legend />
-                  <Bar yAxisId="l" dataKey="core credit" stackId="r" fill="#7c9cff" />
-                  <Bar yAxisId="l" dataKey="Robinhood channel" stackId="r" fill="#7bd389" />
-                  <Bar yAxisId="l" dataKey="offchain" stackId="r" fill="#f4b860" />
-                  <Line yAxisId="r" dataKey="price" stroke="#e5e5e5" strokeWidth={2} dot />
-                </ComposedChart>
-              </ResponsiveContainer>
+          <div className="grid gap-4 md:grid-cols-[1.4fr_1fr]">
+            <div className="rounded-[3px] border border-line bg-surface p-4">
+              <div className="mb-2 text-[13px] font-medium text-ink">Revenue by source</div>
+              <div className="h-64">
+                <ResponsiveContainer>
+                  <BarChart data={chart}>
+                    <CartesianGrid stroke={pal.grid} vertical={false} />
+                    <XAxis dataKey="year" tick={tick} tickLine={false} axisLine={{ stroke: pal.grid }} />
+                    <YAxis tickFormatter={(v) => usd(Number(v))} tick={tick} tickLine={false} axisLine={false} width={58} />
+                    <Tooltip cursor={{ fill: pal.grid, fillOpacity: 0.4 }} contentStyle={tipStyle} labelStyle={{ color: pal.ink, fontWeight: 600 }} itemStyle={{ color: pal.ink2, padding: 0 }} formatter={(v) => usd(Number(v))} />
+                    <Legend iconType="square" iconSize={8} align="left" verticalAlign="top" itemSorter={null} wrapperStyle={{ paddingBottom: 8 }} formatter={(v) => <span style={{ color: pal.ink2, fontSize: 11.5 }}>{String(v)}</span>} />
+                    {(["core credit", "Robinhood channel", "offchain"] as const).map((k, i) => (
+                      <Bar key={k} dataKey={k} stackId="r" fill={pal.series[i]} maxBarSize={40} stroke={pal.surface} strokeWidth={1} radius={i === 2 ? [3, 3, 0, 0] : 0} isAnimationActive={false} />
+                    ))}
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+            <div className="rounded-[3px] border border-line bg-surface p-4">
+              <div className="mb-2 text-[13px] font-medium text-ink">SYRUP price path <span className="font-normal text-muted">· dashed = today</span></div>
+              <div className="h-64">
+                <ResponsiveContainer>
+                  <AreaChart data={chart} margin={{ top: 28 }}>
+                    <CartesianGrid stroke={pal.grid} vertical={false} />
+                    <XAxis dataKey="year" tick={tick} tickLine={false} axisLine={{ stroke: pal.grid }} />
+                    <YAxis tickFormatter={(v) => px(Number(v))} tick={tick} tickLine={false} axisLine={false} width={44} />
+                    <Tooltip contentStyle={tipStyle} labelStyle={{ color: pal.ink, fontWeight: 600 }} itemStyle={{ color: pal.ink2, padding: 0 }} formatter={(v) => px(Number(v))} />
+                    <ReferenceLine y={inp.price} stroke={pal.axis} strokeDasharray="3 3" />
+                    <Area dataKey="price" stroke={pal.series[0]} strokeWidth={2} fill={pal.series[0]} fillOpacity={0.1}
+                      dot={{ r: 3.5, fill: pal.series[0], stroke: pal.surface, strokeWidth: 2 }} activeDot={{ r: 5, stroke: pal.surface, strokeWidth: 2 }} isAnimationActive={false} />
+                  </AreaChart>
+                </ResponsiveContainer>
+              </div>
             </div>
           </div>
 
-          <div className="overflow-x-auto rounded-lg border border-neutral-800 bg-neutral-900/60 p-4">
+          <div className="overflow-x-auto rounded-[3px] border border-line bg-surface p-4">
             <table className="w-full text-xs tabular-nums">
-              <thead><tr className="text-left text-neutral-500">
+              <thead><tr className="text-left text-muted">
                 <th className="py-1 pr-3 font-normal"></th>{rows.map((r) => <th key={r.year} className="py-1 pr-3 text-right font-normal">{r.year}</th>)}
               </tr></thead>
               <tbody className="font-mono">
@@ -191,7 +211,7 @@ export default function Model({ inp }: { inp: ModelInputs }) {
                   ["Circulating supply", (r: Row) => `${(r.supply / 1e6).toFixed(0)}M`],
                   ["SYRUP price", (r: Row) => px(r.price)],
                 ] as [string, (r: Row) => string][]).map(([l, f]) => (
-                  <tr key={l} className={`border-t border-neutral-800 ${l === "SYRUP price" || l === "Total revenue" ? "text-neutral-100" : "text-neutral-400"}`}>
+                  <tr key={l} className={`border-t border-line ${l === "SYRUP price" || l === "Total revenue" ? "text-ink" : "text-ink-2"}`}>
                     <td className="whitespace-pre py-1.5 pr-3 font-sans">{l}</td>
                     {rows.map((r) => <td key={r.year} className="py-1.5 pr-3 text-right">{f(r)}</td>)}
                   </tr>
@@ -200,19 +220,19 @@ export default function Model({ inp }: { inp: ModelInputs }) {
             </table>
           </div>
 
-          <div className="overflow-x-auto rounded-lg border border-neutral-800 bg-neutral-900/60 p-4">
-            <div className="mb-3 text-sm font-medium text-neutral-300">2030 price by stablecoin market and multiple <span className="text-neutral-500">(other inputs as set; steady growth to each 2030 level)</span></div>
+          <div className="overflow-x-auto rounded-[3px] border border-line bg-surface p-4">
+            <div className="mb-3 text-sm font-medium text-ink-2">2030 price by stablecoin market and multiple <span className="text-muted">(other inputs as set; steady growth to each 2030 level)</span></div>
             <table className="w-full text-sm tabular-nums">
-              <thead><tr className="text-left text-neutral-500">
+              <thead><tr className="text-left text-muted">
                 <th className="py-1 pr-3 font-normal">2030 stablecoins</th>
                 {grid.ms.map((m, i) => <th key={i} className="py-1 pr-3 text-right font-normal">{m.toFixed(1)}x{i === 1 ? " (set)" : i === 2 ? " (median)" : ""}</th>)}
               </tr></thead>
               <tbody className="font-mono">
                 {grid.ss.map((s, i) => (
-                  <tr key={s} className="border-t border-neutral-800">
-                    <td className="py-1.5 pr-3 font-sans text-neutral-300">{usd(s)}</td>
+                  <tr key={s} className="border-t border-line">
+                    <td className="py-1.5 pr-3 font-sans text-ink-2">{usd(s)}</td>
                     {grid.cells[i].map((v, j) => (
-                      <td key={j} className={`py-1.5 pr-3 text-right ${v >= inp.price ? "text-neutral-100" : "text-rose-400"}`}>{px(v)} <span className="text-neutral-500">{(v / inp.price).toFixed(1)}x</span></td>
+                      <td key={j} className={`py-1.5 pr-3 text-right ${v >= inp.price ? "text-ink" : "text-down"}`}>{px(v)} <span className="text-muted">{(v / inp.price).toFixed(1)}x</span></td>
                     ))}
                   </tr>
                 ))}

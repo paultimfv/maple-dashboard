@@ -1,5 +1,5 @@
 import { earnAllocation, earnShare, earnDepositors, earnDepositSizes, bridgeFlow, stablecoinSupplyGlobal, llamaFeesByBucket, llamaFinanceProtocols, llamaFinanceWeekly, stockTokens, stockTokensWeekly, stockCredit, stockCreditWeekly, earnRwaShare, bsChain, capitalOnChain, holders, stableSupply, stableSupplyLatest } from "@/lib/queries";
-import { Counter, Card, StackedArea, StackedColumns, SimpleArea, SimpleLine, StackedBars, BarsPlusLine, Table } from "@/components/charts";
+import { Counter, Card, StackedArea, StackedColumns, SimpleArea, SimpleLine, StackedBars, BarsAndLine, Table } from "@/components/charts";
 import { fmtUsd, fmtPct } from "@/lib/fmt";
 
 export const dynamic = "force-dynamic";
@@ -36,12 +36,12 @@ export default async function Page() {
     <main className="mx-auto max-w-6xl space-y-8 px-4 py-8">
       <header>
         <h1 className="text-2xl font-semibold">Macro: stablecoins, Robinhood Chain, tokenization</h1>
-        <p className="text-sm text-neutral-500">Self-hosted · data as of {String(lastDay).slice(0, 10)} · source: Ethereum + Robinhood Chain RPC; DeFiLlama where marked</p>
+        <p className="text-sm text-muted">Self-hosted · data as of {String(lastDay).slice(0, 10)} · source: Ethereum + Robinhood Chain RPC; DeFiLlama where marked</p>
       </header>
 
       <section className="space-y-4">
         <h2 className="text-lg font-medium">Stablecoins</h2>
-        <p className="text-xs text-neutral-500">Onchain credit scales with the dollars onchain. Global supply is the model&apos;s top-line driver (DeFiLlama, all chains, USD-pegged); Robinhood Chain supply is read from each token&apos;s totalSupply().</p>
+        <p className="text-xs text-muted">Onchain credit scales with the dollars onchain. Global supply is the model&apos;s top-line driver (DeFiLlama, all chains, USD-pegged); Robinhood Chain supply is read from each token&apos;s totalSupply().</p>
         <div className="grid grid-cols-2 gap-4 md:grid-cols-3">
           <Counter label="Global stablecoin supply (DeFiLlama)" value={fmtUsd(Number(sg?.supply_usd ?? 0))} sub={sgYearAgo ? `+${fmtPct(Number(sg?.supply_usd) / Number(sgYearAgo.supply_usd) - 1)} year on year` : undefined} />
           <Counter label="Stablecoins on Robinhood Chain" value={fmtUsd(stableTotal)} sub={`${fmtPct(stableTotal / Number(sg?.supply_usd || 1))} of global · ${stablesNow.filter((r) => r.kind === "stablecoin").map((r) => `${r.token} ${fmtUsd(Number(r.supply))}`).join(" · ")}`} />
@@ -55,7 +55,7 @@ export default async function Page() {
 
       <section className="space-y-4">
         <h2 className="text-lg font-medium">Robinhood Chain</h2>
-        <p className="text-xs text-neutral-500">Activity, fees and bridged capital are read from the chain (Blockscout stats, L1 bridge and sequencer-inbox contracts on Ethereum, ETH price). DeFiLlama is used only where marked: protocol-level TVL and app-fee categories.</p>
+        <p className="text-xs text-muted">Activity, fees and bridged capital are read from the chain (Blockscout stats, L1 bridge and sequencer-inbox contracts on Ethereum, ETH price). DeFiLlama is used only where marked: protocol-level TVL and app-fee categories.</p>
         <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
           <Counter label="Capital on chain (onchain)" value={fmtUsd(Number(cl?.capital_onchain_usd ?? 0))} sub={`${fmtUsd(Number(cl?.eth_bridged_usd ?? 0))} ETH bridged · ${fmtUsd(Number(cl?.usdg_native ?? 0))} USDG minted`} />
           <Counter label="DeFi TVL (DeFiLlama)" value={fmtUsd(Number(cl?.llama_tvl_usd ?? 0))} sub="protocol-sum, different definition" />
@@ -71,11 +71,11 @@ export default async function Page() {
           <Card title="New smart wallets (ERC-4337) per day"><SimpleArea data={bs} x="day" y="new_aa_wallets" fmt="raw" /></Card>
           <Card title="Fee share: speculation vs finance, weekly (DeFiLlama)"><StackedArea data={buckets} x="week" y="share" group="bucket" fmt="pct" /></Card>
           <Card title="Fees: speculation vs finance, weekly, USD (DeFiLlama)"><StackedColumns data={buckets} x="week" y="fees_usd" group="bucket" /></Card>
-          <p className="text-xs text-neutral-500 md:col-span-2">Buckets by DeFiLlama category. <span className="text-neutral-400">Speculation</span> = DEXs, aggregators, perps, prediction markets, launchpads, meme, Telegram bots, gamified mining, NFT marketplaces. <span className="text-neutral-400">Finance</span> = lending, risk curators, RWA, yield, capital allocators, payments. <span className="text-neutral-400">Other</span> (grey, ~1%) = bridges, wallets, interfaces, AI agents, indexes.</p>
+          <p className="text-xs text-muted md:col-span-2">Buckets by DeFiLlama category. <span className="text-ink-2">Speculation</span> = DEXs, aggregators, perps, prediction markets, launchpads, meme, Telegram bots, gamified mining, NFT marketplaces. <span className="text-ink-2">Finance</span> = lending, risk curators, RWA, yield, capital allocators, payments. <span className="text-ink-2">Other</span> (grey, ~1%) = bridges, wallets, interfaces, AI agents, indexes.</p>
           <Card title="Lending / Earn protocol fees, weekly (DeFiLlama)"><StackedColumns data={finw} x="week" y="fees_usd" group="protocol" /></Card>
         </div>
-        <div className="rounded-lg border border-neutral-800 bg-neutral-900/60 p-4">
-          <div className="mb-3 text-sm font-medium text-neutral-300">Lending / Earn protocols by fees, last 7 days (DeFiLlama)</div>
+        <div className="rounded-[3px] border border-line bg-surface p-4">
+          <div className="mb-3 text-sm font-medium text-ink-2">Lending / Earn protocols by fees, last 7 days (DeFiLlama)</div>
           <Table rows={finp} cols={[
             { key: "protocol", title: "protocol" }, { key: "category", title: "category" },
             { key: "fees_7d", title: "fees 7d", fmt: "usd" }, { key: "revenue_7d", title: "revenue 7d", fmt: "usd" }, { key: "fee_share", title: "share", fmt: "pct" },
@@ -85,17 +85,17 @@ export default async function Page() {
 
       <section className="space-y-4">
         <h2 className="text-lg font-medium">Tokenization &amp; where the credit actually sits</h2>
-        <p className="text-xs text-neutral-500">Two separate things run on the same Morpho Blue rails on Robinhood Chain. They don&apos;t touch each other today.</p>
+        <p className="text-xs text-muted">Two separate things run on the same Morpho Blue rails on Robinhood Chain. They don&apos;t touch each other today.</p>
         <div className="grid gap-4 md:grid-cols-2">
-          <div className="rounded-lg border border-neutral-800 bg-neutral-900/60 p-4 text-sm">
-            <div className="mb-2 text-xs uppercase tracking-wide text-neutral-400">Track 1 — stock tokens (no Maple exposure)</div>
-            <div className="text-neutral-200">Robinhood stock tokens (&quot;X • Robinhood Token&quot;) → Morpho markets with a stock token as collateral → USDG borrowed</div>
-            <div className="mt-2 text-xs text-neutral-500">{stocks.length} tokens live · {scredit.reduce((a, r) => a + Number(r.markets ?? 0), 0)} markets · only {fmtUsd(stockBorrowed)} borrowed. Nobody lends against tokenized stocks at scale yet, and syrupUSDG is not involved.</div>
+          <div className="rounded-[3px] border border-line bg-surface p-4 text-sm">
+            <div className="mb-2 text-xs uppercase tracking-wide text-ink-2">Track 1 — stock tokens (no Maple exposure)</div>
+            <div className="text-ink">Robinhood stock tokens (&quot;X • Robinhood Token&quot;) → Morpho markets with a stock token as collateral → USDG borrowed</div>
+            <div className="mt-2 text-xs text-muted">{stocks.length} tokens live · {scredit.reduce((a, r) => a + Number(r.markets ?? 0), 0)} markets · only {fmtUsd(stockBorrowed)} borrowed. Nobody lends against tokenized stocks at scale yet, and syrupUSDG is not involved.</div>
           </div>
-          <div className="rounded-lg border border-neutral-800 bg-neutral-900/60 p-4 text-sm">
-            <div className="mb-2 text-xs uppercase tracking-wide text-neutral-400">Track 2 — Robinhood Earn (where Maple sits)</div>
-            <div className="text-neutral-200">Earn deposits (USDG) → Steakhouse USDG vault → Morpho markets whose collateral is a yield / credit token: USDe, <span className="text-white">syrupUSDG</span>, mGLO, spUSDG</div>
-            <div className="mt-2 text-xs text-neutral-500">Earn TVL {fmtUsd(Number(al?.earn_tvl_usdg ?? 0))} · syrupUSDG is {fmtPct(Number(sh?.maple_share_of_earn ?? 0))} of it. This is the only place Maple and Robinhood Chain meet: syrupUSDG is collateral that Earn lends USDG against, not a tokenized stock and not a stock-collateral lender.</div>
+          <div className="rounded-[3px] border border-line bg-surface p-4 text-sm">
+            <div className="mb-2 text-xs uppercase tracking-wide text-ink-2">Track 2 — Robinhood Earn (where Maple sits)</div>
+            <div className="text-ink">Earn deposits (USDG) → Steakhouse USDG vault → Morpho markets whose collateral is a yield / credit token: USDe, <span className="text-ink">syrupUSDG</span>, mGLO, spUSDG</div>
+            <div className="mt-2 text-xs text-muted">Earn TVL {fmtUsd(Number(al?.earn_tvl_usdg ?? 0))} · syrupUSDG is {fmtPct(Number(sh?.maple_share_of_earn ?? 0))} of it. This is the only place Maple and Robinhood Chain meet: syrupUSDG is collateral that Earn lends USDG against, not a tokenized stock and not a stock-collateral lender.</div>
           </div>
         </div>
         <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
@@ -111,12 +111,12 @@ export default async function Page() {
           <Card title="Robinhood Earn allocation by collateral (today)"><StackedBars data={rwa} x="collateral" ys={["allocated_usdg"]} /></Card>
         </div>
         <div className="grid gap-4 md:grid-cols-2">
-          <div className="rounded-lg border border-neutral-800 bg-neutral-900/60 p-4">
-            <div className="mb-3 text-sm font-medium text-neutral-300">Largest stock tokens by shares outstanding</div>
+          <div className="rounded-[3px] border border-line bg-surface p-4">
+            <div className="mb-3 text-sm font-medium text-ink-2">Largest stock tokens by shares outstanding</div>
             <Table rows={stocks.slice(0, 15).map((r) => ({ ...r, holders: holdersByAddr.get(String(r.address ?? "").toLowerCase()) ?? null }))} cols={[{ key: "symbol", title: "ticker" }, { key: "shares_outstanding", title: "shares", fmt: "raw" }, { key: "holders", title: "holders", fmt: "raw" }, { key: "minted", title: "minted", fmt: "raw" }, { key: "burned", title: "burned", fmt: "raw" }, { key: "first_mint", title: "first mint" }]} />
           </div>
-          <div className="rounded-lg border border-neutral-800 bg-neutral-900/60 p-4">
-            <div className="mb-3 text-sm font-medium text-neutral-300">USDG borrowed against tokenized stocks, by collateral</div>
+          <div className="rounded-[3px] border border-line bg-surface p-4">
+            <div className="mb-3 text-sm font-medium text-ink-2">USDG borrowed against tokenized stocks, by collateral</div>
             <Table rows={scredit} cols={[{ key: "collateral", title: "collateral" }, { key: "net_borrowed_usdg", title: "outstanding", fmt: "usd" }, { key: "gross_borrowed_usdg", title: "gross borrowed", fmt: "usd" }, { key: "borrowers", title: "borrowers", fmt: "raw" }, { key: "markets", title: "markets", fmt: "raw" }]} />
           </div>
         </div>
@@ -124,7 +124,7 @@ export default async function Page() {
 
       <section className="space-y-4">
         <h2 className="text-lg font-medium">Robinhood Earn: the distribution channel</h2>
-        <p className="text-xs text-neutral-500">Steakhouse USDG vault (steakUSDG) on Robinhood Chain — the contract behind Robinhood Earn. Users = distinct share owners.</p>
+        <p className="text-xs text-muted">Steakhouse USDG vault (steakUSDG) on Robinhood Chain — the contract behind Robinhood Earn. Users = distinct share owners.</p>
         <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
           <Counter label="Earn users (all-time)" value={Number(sizes?.users ?? 0).toLocaleString()} sub={`${Number(sizes?.deposits ?? 0).toLocaleString()} deposits · ${holderOf("steakUSDG (Earn)").toLocaleString()} current holders (Blockscout)`} />
           <Counter label="Median deposit" value={fmtUsd(Number(sizes?.median_deposit ?? 0))} sub={`avg ${fmtUsd(Number(sizes?.avg_deposit ?? 0))} · p90 ${fmtUsd(Number(sizes?.p90_deposit ?? 0))}`} />
@@ -133,13 +133,13 @@ export default async function Page() {
         </div>
         <div className="grid gap-4 md:grid-cols-2">
           <Card title="Earn users per week (active vs new)"><StackedBars data={dep} x="week" ys={["new_users", "active_users"]} fmt="raw" /></Card>
-          <Card title="Earn deposits vs net flow, weekly"><BarsPlusLine data={dep} x="week" bar="deposited_usd" line="net_flow_usd" /></Card>
+          <Card title="Earn deposits vs net flow, weekly"><BarsAndLine data={dep} x="week" bar="deposited_usd" line="net_flow_usd" /></Card>
           <Card title="syrupUSDG bridged to / from Robinhood Chain, weekly"><StackedBars data={bridge} x="week" ys={["bridged_in", "bridged_out"]} /></Card>
           <Card title="Cumulative Earn users"><SimpleArea data={dep} x="week" y="cumulative_users" fmt="raw" /></Card>
         </div>
       </section>
 
-      <p className="text-xs text-neutral-500">Maple Finance, syrupUSDG and SYRUP live on the <a href="/maple" className="underline">Maple Finance + SYRUP</a> page.</p>
+      <p className="text-xs text-muted">Maple Finance, syrupUSDG and SYRUP live on the <a href="/maple" className="underline">Maple Finance + SYRUP</a> page.</p>
     </main>
   );
 }
