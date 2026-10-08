@@ -48,11 +48,20 @@ const LABELS: Record<string, string> = {
   interest_to_depositors_usd: "To lenders", delegate_fee_usd: "Pool delegate", maple_fee_usd: "Maple", utilization: "Utilization",
   exch_rate: "Exchange rate", price_usd: "Price", syrup_held: "SYRUP held", amount_usd: "Bought back", avg_price: "Average price",
   originated_usd: "Originated", principal_outstanding_usd: "Outstanding",
+  supply_usd: "Supply", capital_onchain_usd: "Capital on chain", eth_bridged_usd: "ETH bridged", llama_tvl_usd: "DeFiLlama TVL",
+  maple_share_of_capital: "Share of capital", maple_share_of_llama_tvl: "Share of DeFiLlama TVL", txns: "Transactions",
+  new_accounts: "New", active_accounts: "Active", l1_cost_usd: "L1 cost", sequencer_margin_usd: "Margin", new_aa_wallets: "Smart wallets",
+  speculation: "Speculation", finance: "Finance", minted: "Minted", burned: "Burned", cumulative_shares: "Shares outstanding",
+  allocated_usdg: "Allocated", new_users: "New", active_users: "Active", deposited_usd: "Deposited", net_flow_usd: "Net flow",
+  bridged_in: "Bridged in", bridged_out: "Bridged out", cumulative_users: "Users", fees_usd: "Fees", share: "Share",
 };
 export const label = (k: string) => LABELS[k] ?? k.replace(/_usd$/, "").replace(/_/g, " ");
 
-export type Fmt = "usd" | "pct" | "rate" | "raw" | "mult";
-const F: Record<Fmt, (v: number) => string> = { usd: fmtUsd, pct: fmtPct, rate: (v) => v.toFixed(4), raw: (v) => v.toLocaleString(), mult: (v) => `${v.toFixed(1)}x` };
+export type Fmt = "usd" | "pct" | "rate" | "raw" | "mult" | "int";
+const F: Record<Fmt, (v: number) => string> = { usd: fmtUsd, pct: fmtPct, rate: (v) => v.toFixed(4), raw: (v) => v.toLocaleString(), mult: (v) => `${v.toFixed(1)}x`, int: (v) => v.toLocaleString(undefined, { maximumFractionDigits: 0 }) };
+// axis ticks stay short: counts compact to 7.2M / 30K, everything else uses the normal formatter
+const compact = (v: number) => (Math.abs(v) >= 1e6 ? `${+(v / 1e6).toFixed(1)}M` : Math.abs(v) >= 1e3 ? `${+(v / 1e3).toFixed(1)}K` : v.toLocaleString());
+const AX: Record<Fmt, (v: number) => string> = { ...F, raw: compact, int: compact };
 const MON = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
 // month-start dates (monthly series) render as "Mar '25"; anything else as "Mar 14"
 const fmtDay = (d: unknown) => { const s = String(d); const m = MON[Number(s.slice(5, 7)) - 1]; if (!m) return s; return s.slice(8, 10) === "01" ? `${m} '${s.slice(2, 4)}` : `${m} ${s.slice(8, 10)}`; };
@@ -64,7 +73,7 @@ function chrome(pal: Pal, fmt: Fmt, x: string, legend: boolean) {
   return [
     <CartesianGrid key="g" stroke={pal.grid} vertical={false} />,
     <XAxis key="x" dataKey={x} tickFormatter={fmtDay} tick={tick} tickLine={false} axisLine={{ stroke: pal.grid }} minTickGap={28} padding={{ right: 8 }} />,
-    <YAxis key="y" tickFormatter={F[fmt]} width={58} tick={tick} tickLine={false} axisLine={false} />,
+    <YAxis key="y" tickFormatter={AX[fmt]} width={58} tick={tick} tickLine={false} axisLine={false} />,
     <Tooltip key="t" cursor={{ stroke: pal.axis, strokeWidth: 1, fill: pal.grid, fillOpacity: 0.4 }}
       contentStyle={{ background: pal.surface, border: `1px solid ${pal.grid}`, borderRadius: 3, fontSize: 12, boxShadow: "0 4px 16px rgba(0,0,0,0.08)" }}
       labelStyle={{ color: pal.ink, fontWeight: 600, marginBottom: 4 }} itemStyle={{ color: pal.ink2, padding: 0 }}
@@ -264,7 +273,7 @@ export function Table({ rows, cols }: { rows: Row[]; cols: { key: string; title:
         </tr></thead>
         <tbody>{rows.map((r, i) => (
           <tr key={i} className="border-t border-line hover:bg-wash">
-            {cols.map((c, j) => <td key={c.key} className={`py-1.5 pr-4 font-mono tabular-nums ${numeric(c.fmt) ? "text-right" : "text-left"} ${j === 0 ? "text-ink" : "text-ink-2"}`}>{f(r[c.key], c.fmt)}</td>)}
+            {cols.map((c, j) => <td key={c.key} className={`whitespace-nowrap py-1.5 pr-4 font-mono tabular-nums ${numeric(c.fmt) ? "text-right" : "text-left"} ${j === 0 ? "text-ink" : "text-ink-2"}`}>{f(r[c.key], c.fmt)}</td>)}
           </tr>
         ))}</tbody>
       </table>
