@@ -1,125 +1,177 @@
-import { earnAllocation, earnShare, earnDepositors, earnDepositSizes, bridgeFlow, stablecoinSupplyGlobal, llamaFeesByBucket, llamaFinanceProtocols, llamaFinanceWeekly, earnRwaShare, bsChain, capitalOnChain, holders, stableSupply, stableSupplyLatest } from "@/lib/queries";
-import Link from "next/link";
-import { Counter, Counters, Card, Panel, Section, Note, StackedArea, StackedAreas, StackedColumns, SimpleArea, SimpleLine, StackedBars, BarsAndLine, CategoryBars, Table } from "@/components/charts";
+import { rhAum, earnAllocation, earnShare, interestWeekly, loansWeekly, shareOfUsdg, poolState, utilization, topLoans, syrupPrice, syrupBuybacks, revenueBridge, capitalOnChain, holders, mapleRevenueMonthly, mapleModelMonthly, mapleAumByPool, mapleAumLatest, annualInputs, syrupSupply, mapleAumReported, poolsSnapshot, mapleLenders, mapleBorrowers, ssfDaily, mapleBalanceSheet } from "@/lib/queries";
+import { Counter, Counters, Card, Panel, Section, Note, StackedColumns, SimpleLine, StackedBars, Table, StackedBarsWithLines } from "@/components/charts";
 import { fmtUsd, fmtPct } from "@/lib/fmt";
 
 export const dynamic = "force-dynamic";
 
 const last = <T,>(a: T[]) => a[a.length - 1];
+const n = (v: unknown) => Number(v ?? 0);
 
-export default async function Page() {
-  const [alloc, share, dep, sizes, bridge, stableGlobal] = await Promise.all([
-    earnAllocation(), earnShare(), earnDepositors(), earnDepositSizes(), bridgeFlow(), stablecoinSupplyGlobal(),
+export default async function BusinessPage() {
+  const [rev, model, aumPools, aumNow, annual, supply, aumRep, snap] = await Promise.all([
+    mapleRevenueMonthly(), mapleModelMonthly(), mapleAumByPool(), mapleAumLatest(), annualInputs(), syrupSupply(), mapleAumReported(), poolsSnapshot(),
   ]);
-  const [buckets, finp, finw] = await Promise.all([llamaFeesByBucket(), llamaFinanceProtocols(), llamaFinanceWeekly()]);
-  const rwa = await earnRwaShare();
-  const [bs, cap, hold, stables, stablesNow] = await Promise.all([bsChain(), capitalOnChain(), holders(), stableSupply(), stableSupplyLatest()]);
-  const stableTotal = stablesNow.filter((r) => r.kind === "stablecoin").reduce((a, r) => a + Number(r.supply), 0);
-  const ybTotal = stablesNow.filter((r) => r.kind === "yield-bearing").reduce((a, r) => a + Number(r.supply), 0);
-  const bsl = last(bs);
-  const cl = last(cap);
-  const holderOf = (t: string) => Number(hold.find((r) => r.token === t)?.holders ?? 0);
-  const rwaCredit = rwa.filter((r) => ["syrupUSDG", "mGLO"].includes(String(r.collateral))).reduce((a, r) => a + Number(r.share), 0);
+  const ar = last(aumRep);
+  const [lenders, borrowers, ssf, bsheet] = await Promise.all([mapleLenders(), mapleBorrowers(), ssfDaily(), mapleBalanceSheet()]);
+  const sf = last(ssf);
+  const bal = bsheet[0];
+  const ln = last(lenders);
+  const bw = last(borrowers);
+  const yoy = <T extends Record<string, unknown>>(rows: T[], k: string) => {
+    const a = rows.slice(-12).reduce((s, x) => s + n(x[k]), 0), b = rows.slice(-24, -12).reduce((s, x) => s + n(x[k]), 0);
+    return b ? a / b - 1 : 0;
+  };
+  const [aum, alloc, share, interest, loans, usdg, pool, util, top, syrup, buybacks, bridgeRev, cap, hold] = await Promise.all([
+    rhAum(), earnAllocation(), earnShare(), interestWeekly(), loansWeekly(), shareOfUsdg(), poolState(), utilization(), topLoans(),
+    syrupPrice(), syrupBuybacks(), revenueBridge(), capitalOnChain(), holders(),
+  ]);
+
+  const m = last(model);
+  const r = last(rev);
+  const sp = last(syrup);
+  const sup = last(supply);
+    const ttm = [...model].reverse().find((x) => x.ttm_revenue != null);
+  const psNow = ttm ? n(sp?.mcap_usd) / n(ttm.ttm_revenue) : 0;
+  const bbTotal = buybacks.reduce((s, x) => s + n(x.amount_usd), 0);
+  const holderOf = (t: string) => n(hold.find((x) => x.token === t)?.holders);
+
+  const lastDay = last(aum)?.day;
+  const aumRh = aum.filter((x) => x.day === lastDay).reduce((s, x) => s + n(x.aum_usd), 0);
+  const p = last(pool);
   const sh = last(share);
   const al = last(alloc);
-  const sg = last(stableGlobal);
-  const sgYearAgo = stableGlobal.find((r) => String(r.day) >= String(Number(String(sg?.day).slice(0, 4)) - 1) + String(sg?.day).slice(4));
-  const lastDay = last(bs)?.day;
-  const lastWk = last(buckets)?.week;
-  const spec = buckets.find((r) => r.week === lastWk && r.bucket === "speculation");
-  const fin = buckets.find((r) => r.week === lastWk && r.bucket === "finance");
+  const it = last(interest);
+  const lo = [...loans].reverse().find((x) => x.principal_outstanding_usd != null);
+  const u = last(util);
+  const ug = last(usdg);
+  const cl = last(cap);
+  const rb = last(bridgeRev);
 
+  const lyoy = yoy(lenders, "new_lenders");
+  const iyoy = yoy(borrowers, "interest_paid_usd");
+  const signed = (v: number) => `${v >= 0 ? "+" : ""}${fmtPct(v)}`;
 
   return (
     <main className="mx-auto max-w-6xl space-y-12 px-4 py-10">
       <header className="space-y-3">
-        <div className="font-mono text-[11px] uppercase tracking-wider text-muted">Research dashboard · data as of {String(lastDay).slice(0, 10)}</div>
-        <h1 className="text-[28px] font-semibold leading-tight tracking-tight">Macro: stablecoins, Robinhood Chain, Robinhood Earn</h1>
-        <p className="max-w-3xl text-[13px] leading-relaxed text-ink-2">Self-hosted. Read from Ethereum and Robinhood Chain RPC; DeFiLlama where marked.</p>
+        <div className="font-mono text-[11px] uppercase tracking-wider text-muted">
+          Research dashboard · data as of {String(ar?.day ?? "").slice(0, 10)}
+        </div>
+        <h1 className="text-[28px] font-semibold leading-tight tracking-tight">Maple Finance</h1>
+        <p className="max-w-3xl text-[13px] leading-relaxed text-ink-2">
+          Every Maple number on this page is rebuilt from contract events and state on Ethereum and Robinhood Chain (239-contract registry), except OTC desk revenue (published by Maple) and SYRUP price (CoinGecko).
+        </p>
       </header>
 
-      <Section n="01" tone="rh" title="Stablecoins" lede="Onchain credit scales with the dollars onchain. Global supply is the model's top-line driver (DeFiLlama, all chains, USD-pegged); Robinhood Chain supply is read from each token's totalSupply().">
+      {/* ---------------------------------------------------------------- the business */}
+      <Section n="01" title="The business: revenue, AUM, multiple">
+        <Counters>
+          <Counter label="Revenue, TTM" value={fmtUsd(n(ttm?.ttm_revenue))} sub={`through ${String(ttm?.month ?? "").slice(0, 7)}`} />
+          <Counter label="Revenue, last month" value={fmtUsd(n(r?.total_revenue))} sub={`${String(r?.month ?? "").slice(0, 7)} · ${fmtUsd(n(r?.onchain_revenue))} onchain`} />
+          <Counter label="AUM" value={fmtUsd(n(ar?.aum_usd))} sub={`${fmtUsd(n(ar?.deposits_usd))} deposits + ${fmtUsd(n(ar?.collateral_usd))} collateral`} />
+          <Counter label="Revenue yield on AUM" value={fmtPct(n(m?.revenue_yield_on_aum))} sub="last month × 12 ÷ month-end AUM" />
+          <Counter label="SYRUP market cap" value={fmtUsd(n(sp?.mcap_usd))} sub={`$${n(sp?.price_usd).toFixed(4)} (CoinGecko)`} />
+          <Counter label="P/S, TTM" value={`${psNow.toFixed(1)}x`} sub="market cap ÷ TTM revenue" />
+        </Counters>
+        <div className="grid gap-4 md:grid-cols-2">
+          <Card wide tall title="Revenue by month and source" sub="vs MIP-021 buyback tiers ($1.5M → 20%, $2M → 30%)">
+            <StackedBarsWithLines data={rev} x="month" ys={["open_term_loans", "fixed_term_loans", "strategies", "otc_offchain"]}
+              lines={[{ y: 1_500_000, label: "20% tier" }, { y: 2_000_000, label: "30% tier" }]} />
+          </Card>
+          <Card title="P/S on trailing-12m revenue" sub="SYRUP market cap ÷ TTM revenue, month-end"><SimpleLine data={model.filter((x) => x.ps_ttm != null)} x="month" ys={["ps_ttm"]} fmt="mult" /></Card>
+          <Card title="AUM = lender deposits + borrower collateral" sub="weekly, Maple-reported since 2023"><StackedBars data={aumRep} x="day" ys={["deposits_usd", "collateral_usd"]} /></Card>
+          <Card title="Lender deposits by pool" sub="month-end pool totalAssets, live from contracts"><StackedColumns data={aumPools} x="day" y="aum_usd" group="pool" /></Card>
+          <Card title="Revenue yield on AUM" sub="annualised"><SimpleLine data={model.filter((x) => x.revenue_yield_on_aum != null)} x="month" ys={["revenue_yield_on_aum"]} /></Card>
+        </div>
+        <Panel title="Pools today" sub={`Maple API, ${String(snap[0]?.day ?? "").slice(0, 10)} · TVL = deposits + borrower collateral`}>
+          <Table rows={snap} cols={[
+            { key: "pool_name", title: "pool" }, { key: "tvl", title: "TVL (AUM)", fmt: "usd" }, { key: "share_of_protocol_tvl", title: "share", fmt: "pct" },
+            { key: "deposits_usd", title: "deposits", fmt: "usd" }, { key: "collateral_usd", title: "collateral", fmt: "usd" },
+            { key: "loans_outstanding_usd", title: "loans out", fmt: "usd" }, { key: "utilization", title: "utilization", fmt: "pct" },
+          ]} />
+        </Panel>
+        <Panel title="By year" sub="the model's history columns">
+          <Table rows={annual} cols={[
+            { key: "year", title: "year" }, { key: "months", title: "months", fmt: "raw" },
+            { key: "onchain_revenue", title: "onchain rev", fmt: "usd" }, { key: "offchain_revenue", title: "OTC / offchain", fmt: "usd" },
+            { key: "total_revenue", title: "total revenue", fmt: "usd" }, { key: "aum_year_end", title: "AUM (yr-end)", fmt: "usd" },
+            { key: "mcap_year_end", title: "mcap (yr-end)", fmt: "usd" }, { key: "ps", title: "P/S", fmt: "mult" }, { key: "buybacks", title: "buybacks", fmt: "usd" },
+          ]} />
+        </Panel>
+        <Note>
+          <span className="text-ink-2">Onchain revenue</span> = open-term <code>ClaimedFundsDistributed</code> (platform + delegate fees) + fixed-term <code>ManagementFeesPaid</code> / <code>ServiceFeesPaid</code> / <code>OriginationFeesPaid</code> + strategy <code>StrategyFeesCollected</code>. WETH pools excluded.
+          {" "}<span className="text-ink-2">OTC / offchain</span> = Maple-reported monthly revenue (transparency page) − our onchain fees. It reconciles to Maple&apos;s published OTC desk revenue within ~$60k in most months.
+        </Note>
+      </Section>
+
+      {/* ---------------------------------------------------------------- lenders + borrowers */}
+      <Section n="02" title="Lenders and borrowers">
+        <Counters cols="md:grid-cols-4">
+          <Counter label="Unique lenders, all-time" value={n(ln?.cumulative_lenders).toLocaleString()} sub={`${n(ln?.new_lenders).toLocaleString()} new in ${String(ln?.month ?? "").slice(0, 7)}`} />
+          <Counter label="New lenders, 12m vs prior" value={signed(lyoy)} tone={lyoy >= 0 ? "up" : "down"} sub="pool Deposit events, all USD pools" />
+          <Counter label="Unique borrowers, all-time" value={n(bw?.cumulative_borrowers).toLocaleString()} sub={`${n(bw?.active_borrowers)} paying in ${String(bw?.month ?? "").slice(0, 7)} · ${n(bw?.active_loans)} loans`} />
+          <Counter label="Interest paid, 12m vs prior" value={signed(iyoy)} tone={iyoy >= 0 ? "up" : "down"} sub="gross interest on open-term loans" />
+        </Counters>
+        <div className="grid gap-4 md:grid-cols-2">
+          <Card title="Lenders per month" sub="new vs returning"><StackedBars data={lenders.map((x) => ({ ...x, returning_lenders: n(x.active_lenders) - n(x.new_lenders) }))} x="month" ys={["new_lenders", "returning_lenders"]} fmt="raw" /></Card>
+          <Card title="Cumulative unique lenders"><SimpleLine data={lenders} x="month" ys={["cumulative_lenders"]} fmt="raw" /></Card>
+          <Card title="Borrowers paying per month" sub="new vs existing"><StackedBars data={borrowers.map((x) => ({ ...x, existing_borrowers: n(x.active_borrowers) - n(x.new_borrowers) }))} x="month" ys={["new_borrowers", "existing_borrowers"]} fmt="raw" /></Card>
+          <Card title="Interest paid by borrowers per month"><StackedBars data={borrowers} x="month" ys={["interest_paid_usd"]} /></Card>
+        </div>
+        <Note>Lenders = distinct share recipients of ERC-4626 <code>Deposit</code> on every USD Maple pool. Borrowers = <code>loan.borrower()</code> for every loan that made a payment (<code>ClaimedFundsDistributed</code>, fixed-term fee events). Rebuilt from contracts; replaces the Dune versions.</Note>
+      </Section>
+
+      {/* ---------------------------------------------------------------- Robinhood channel */}
+      <Section n="03" title="syrupUSDG: Maple's Robinhood channel" lede="syrupUSDG is the Maple pool built for USDG. Most of it sits on Robinhood Chain as collateral in Robinhood Earn; the loans and the fees live on Ethereum.">
         <Counters cols="md:grid-cols-3">
-          <Counter label="Global stablecoin supply" value={fmtUsd(Number(sg?.supply_usd ?? 0))} sub={sgYearAgo ? `+${fmtPct(Number(sg?.supply_usd) / Number(sgYearAgo.supply_usd) - 1)} year on year · DeFiLlama` : "DeFiLlama"} />
-          <Counter label="Stablecoins on Robinhood Chain" value={fmtUsd(stableTotal)} sub={`${fmtPct(stableTotal / Number(sg?.supply_usd || 1))} of global · ${stablesNow.filter((r) => r.kind === "stablecoin").map((r) => `${r.token} ${fmtUsd(Number(r.supply))}`).join(" · ")}`} />
-          <Counter label="Yield-bearing on Robinhood Chain" value={fmtUsd(ybTotal)} sub="syrupUSDG, mGLO" />
+          <Counter label="syrupUSDG pool AUM" value={fmtUsd(n(p?.total_assets))} sub={`exch rate ${n(p?.exch_rate || 1).toFixed(4)}`} />
+          <Counter label="On Robinhood Chain" value={fmtUsd(aumRh)} sub={`${fmtPct(aumRh / (n(p?.total_assets) || 1))} of pool`} />
+          <Counter label="syrupUSDG share of Earn" value={fmtPct(n(sh?.maple_share_of_earn))} />
+          <Counter label="Interest generated, all-time" value={fmtUsd(n(it?.cumulative_gross_interest_usd))} sub={`Maple take rate ${fmtPct(n(it?.maple_take_rate))}`} />
+          <Counter label="syrupUSDG revenue, last month" value={fmtUsd(n(rb?.syrupusdg_revenue))} sub={`${fmtPct(n(rb?.syrupusdg_share_of_onchain_rev))} of Maple open-term platform fees`} />
+          <Counter label="Loans outstanding" value={fmtUsd(n(lo?.principal_outstanding_usd))} sub={`utilization ${fmtPct(n(u?.utilization))}`} />
         </Counters>
         <div className="grid gap-4 md:grid-cols-2">
-          <Card title="Global stablecoin supply" sub="weekly · DeFiLlama"><SimpleArea data={stableGlobal} x="day" y="supply_usd" /></Card>
-          <Card title="Stablecoin supply on Robinhood Chain" sub="totalSupply, daily"><StackedColumns data={stables} x="day" y="supply" group="token" /></Card>
+          <Card tone="rh" title="syrupUSDG share of Robinhood Earn"><SimpleLine data={share} x="day" ys={["maple_share_of_earn"]} /></Card>
+          <Card tone="maple" title="syrupUSDG pool AUM vs loans outstanding"><SimpleLine data={util} x="day" ys={["total_assets", "loans_outstanding"]} fmt="usd" /></Card>
+          <Card tone="maple" title="syrupUSDG interest, weekly" sub="who gets it"><StackedBars data={interest} x="week" ys={["interest_to_depositors_usd", "delegate_fee_usd", "maple_fee_usd"]} /></Card>
+          <Card tone="maple" title="syrupUSDG utilization"><SimpleLine data={util} x="day" ys={["utilization"]} /></Card>
+          <Card tone="maple" title="syrupUSDG loans originated, weekly"><StackedBars data={loans} x="week" ys={["originated_usd"]} /></Card>
+          <Card tone="maple" title="syrupUSDG loans outstanding"><SimpleLine data={loans.filter((x) => x.principal_outstanding_usd != null)} x="week" ys={["principal_outstanding_usd"]} fmt="usd" /></Card>
+          <Card wide tone="maple" title="syrupUSDG exchange rate"><SimpleLine data={pool} x="day" ys={["exch_rate"]} fmt="rate" /></Card>
         </div>
+        <Panel title="syrupUSDG: top loans by interest generated">
+          <Table rows={top} cols={[
+            { key: "loan", title: "loan", fmt: "addr" }, { key: "payments", title: "payments", fmt: "raw" },
+            { key: "principal_usd", title: "principal repaid", fmt: "usd" }, { key: "interest_usd", title: "interest", fmt: "usd" },
+            { key: "maple_revenue_usd", title: "maple rev", fmt: "usd" }, { key: "first_payment", title: "first" }, { key: "last_payment", title: "last" },
+          ]} />
+        </Panel>
       </Section>
 
-      <Section n="02" tone="rh" title="Robinhood Chain" lede="Activity, fees and bridged capital are read from the chain (Blockscout stats, L1 bridge and sequencer-inbox contracts on Ethereum, ETH price). DeFiLlama is used only where marked: protocol-level TVL and app-fee categories.">
+      {/* ---------------------------------------------------------------- SYRUP */}
+      <Section n="04" title="SYRUP: value accrual">
         <Counters cols="md:grid-cols-4">
-          <Counter label="Capital on chain" value={fmtUsd(Number(cl?.capital_onchain_usd ?? 0))} sub={`${fmtUsd(Number(cl?.eth_bridged_usd ?? 0))} ETH bridged · ${fmtUsd(Number(cl?.usdg_native ?? 0))} USDG minted`} />
-          <Counter label="DeFi TVL (DeFiLlama)" value={fmtUsd(Number(cl?.llama_tvl_usd ?? 0))} sub="protocol-sum, different definition" />
-          <Counter label="Transactions / day" value={Number(bsl?.txns ?? 0).toLocaleString()} sub={`${Number(bsl?.active_accounts ?? 0).toLocaleString()} active accounts · ${Number(bsl?.new_accounts ?? 0).toLocaleString()} new`} />
-          <Counter label="Sequencer fees / day" value={fmtUsd(Number(bsl?.fees_usd ?? 0))} sub={bsl?.l1_cost_usd != null ? `L1 cost ${fmtUsd(Number(bsl.l1_cost_usd))} · margin ${fmtUsd(Number(bsl.sequencer_margin_usd))}` : `${Number(bsl?.fees_eth ?? 0).toFixed(1)} ETH`} />
+          <Counter label="SYRUP price" value={`$${n(sp?.price_usd).toFixed(4)}`} sub={`mcap ${fmtUsd(n(sp?.mcap_usd))}`} />
+          <Counter label="Circulating supply" value={`${(n(sup?.circulating) / 1e6).toFixed(1)}M`} sub={`total ${(n(sup?.total_supply) / 1e6).toFixed(1)}M (contract) − SSF ${(n(sup?.ssf_held) / 1e6).toFixed(1)}M (Maple)`} />
+          <Counter label="Buybacks, all-time" value={fmtUsd(bbTotal)} sub={`${buybacks.length} months · through ${String(last(buybacks)?.month ?? "").slice(0, 7)}`} />
+          <Counter label="MIP-021 tier, last month" value={fmtPct(n(m?.mip021_tier))} sub={`on ${fmtUsd(n(m?.total_revenue))} revenue: 10% < $1.5M · 20% < $2M · 30% above`} />
+        </Counters>
+        <Counters cols="md:grid-cols-3">
+          <Counter label="Syrup Strategic Fund" value={`${(n(sf?.syrup_held) / 1e6).toFixed(1)}M SYRUP`} sub={`+ ${fmtUsd(n(sf?.liquid_assets_usd))} liquid assets · ${String(sf?.day ?? "").slice(0, 10)}`} />
+          <Counter label="Maple balance sheet" value={fmtUsd(n(bal?.syrup_usd) + n(bal?.liquid_assets_usd))} sub={`${(n(bal?.syrup_amount) / 1e6).toFixed(1)}M SYRUP (${fmtUsd(n(bal?.syrup_usd))}) + ${fmtUsd(n(bal?.liquid_assets_usd))} liquid`} />
+          <Counter label="SSF SYRUP, change since Aug 2025" value={`${((n(sf?.syrup_held) - n(ssf[0]?.syrup_held)) / 1e6).toFixed(1)}M`} sub="vs SYRUP bought back over the same period" />
         </Counters>
         <div className="grid gap-4 md:grid-cols-2">
-          <Card title="Capital on Robinhood Chain" sub="onchain: USDG minted + ETH bridged from Ethereum"><StackedAreas data={cap} x="day" ys={["usdg_native", "eth_bridged_usd"]} /></Card>
-          <Card tone="maple" title="Maple share of capital on chain" sub="syrupUSDG on Robinhood Chain ÷ onchain capital · from when capital passed $50M"><SimpleLine data={cap.filter((r) => Number(r.capital_onchain_usd) >= 50e6)} x="day" ys={["maple_share_of_capital"]} /></Card>
-          <Card title="Transactions per day"><SimpleArea data={bs} x="day" y="txns" fmt="raw" /></Card>
-          <Card title="Accounts per day" sub="active, and new among them · Aug 11–12 spike is a one-off wave of new accounts"><SimpleLine data={bs} x="day" ys={["active_accounts", "new_accounts"]} fmt="raw" /></Card>
-          <Card title="Gas fees per day" sub="paid to the sequencer, USD · early-September spike is real (1,400–3,300 ETH/day)"><SimpleArea data={bs} x="day" y="fees_usd" /></Card>
-          <Card title="New smart wallets per day" sub="ERC-4337"><SimpleArea data={bs} x="day" y="new_aa_wallets" fmt="raw" /></Card>
-          <Card title="Fee share: speculation vs finance" sub="weekly · DeFiLlama"><StackedArea data={buckets} x="week" y="share" group="bucket" fmt="pct" /></Card>
-          <Card title="Fees: speculation vs finance" sub="weekly, USD · DeFiLlama"><StackedColumns data={buckets} x="week" y="fees_usd" group="bucket" /></Card>
+          <Card title="SYRUP price"><SimpleLine data={syrup} x="day" ys={["price_usd"]} fmt="rate" /></Card>
+          <Card title="Syrup Strategic Fund: SYRUP held" sub="Maple-reported"><SimpleLine data={ssf} x="day" ys={["syrup_held"]} fmt="raw" /></Card>
+          <Card title="SYRUP buybacks by month" sub="USD spent"><StackedBars data={buybacks} x="month" ys={["amount_usd"]} /></Card>
+          <Card title="Average buyback price" sub="USD per SYRUP"><SimpleLine data={buybacks} x="month" ys={["avg_price"]} fmt="rate" /></Card>
         </div>
-        <Note>Buckets by DeFiLlama category. <span className="text-ink-2">Speculation</span> = DEXs, aggregators, perps, prediction markets, launchpads, meme, Telegram bots, gamified mining, NFT marketplaces. <span className="text-ink-2">Finance</span> = lending, risk curators, RWA, yield, capital allocators, payments. <span className="text-ink-2">Other</span> (grey, ~1%) = bridges, wallets, interfaces, AI agents, indexes.</Note>
-        <div className="grid gap-4 md:grid-cols-2">
-          <Card title="Lending / Earn protocol fees" sub="weekly · DeFiLlama"><StackedColumns data={finw} x="week" y="fees_usd" group="protocol" /></Card>
-          <Panel title="Lending / Earn protocols by fees" sub="last 7 days · DeFiLlama">
-            <Table rows={finp} cols={[
-              { key: "protocol", title: "protocol" }, { key: "category", title: "category" },
-              { key: "fees_7d", title: "fees 7d", fmt: "usd" }, { key: "revenue_7d", title: "revenue 7d", fmt: "usd" }, { key: "fee_share", title: "share", fmt: "pct" },
-            ]} />
-          </Panel>
-        </div>
+        <Note>
+          Buyback amounts and SSF holdings are Maple-reported (transparency page). June, July and August 2026 are verified onchain: each matches a SYRUP withdrawal from Binance that ends in the same wallet (0x99f0…a9ca), within a few tokens (July exactly). Maple executes buybacks on a centralised exchange, not onchain.
+        </Note>
       </Section>
-
-      <Section n="03" tone="rh" title="Robinhood Earn: the distribution channel" lede="Steakhouse USDG vault (steakUSDG) on Robinhood Chain, the contract behind Robinhood Earn. Users = distinct share owners.">
-        <Track tag="Earn" title="Where Maple sits" note="syrupUSDG is collateral Earn lends against" accent
-          flow={["Earn deposits (USDG)", "Steakhouse USDG vault", "Morpho markets: USDe, syrupUSDG, mGLO, spUSDG"]}
-          foot={`Earn TVL ${fmtUsd(Number(al?.earn_tvl_usdg ?? 0))} · syrupUSDG is ${fmtPct(Number(sh?.maple_share_of_earn ?? 0))} of it, ${fmtPct(rwaCredit)} sits in RWA credit (Maple + Midas). This is the only place Maple and Robinhood Chain meet.`} />
-        <Counters cols="md:grid-cols-4">
-          <Counter label="Earn users, all-time" value={Number(sizes?.users ?? 0).toLocaleString()} sub={`${Number(sizes?.deposits ?? 0).toLocaleString()} deposits · ${holderOf("steakUSDG (Earn)").toLocaleString()} current holders (Blockscout)`} />
-          <Counter label="Median deposit" value={fmtUsd(Number(sizes?.median_deposit ?? 0))} sub={`avg ${fmtUsd(Number(sizes?.avg_deposit ?? 0))} · p90 ${fmtUsd(Number(sizes?.p90_deposit ?? 0))}`} />
-          <Counter label="Active users, last week" value={Number(last(dep)?.active_users ?? 0).toLocaleString()} sub={`${Number(last(dep)?.new_users ?? 0).toLocaleString()} new`} />
-          <Counter label="Net flow, last week" value={fmtUsd(Number(last(dep)?.net_flow_usd ?? 0))} tone={Number(last(dep)?.net_flow_usd ?? 0) >= 0 ? "up" : "down"} />
-        </Counters>
-        <div className="grid gap-4 md:grid-cols-2">
-          <Card title="Earn users per week" sub="active, and new among them"><SimpleLine data={dep} x="week" ys={["active_users", "new_users"]} fmt="raw" /></Card>
-          <Card title="Earn deposits vs net flow" sub="weekly"><BarsAndLine data={dep} x="week" bar="deposited_usd" line="net_flow_usd" /></Card>
-          <Card title="syrupUSDG bridged to / from Robinhood Chain" sub="weekly"><StackedBars data={bridge} x="week" ys={["bridged_in", "bridged_out"]} /></Card>
-          <Card title="Cumulative Earn users"><SimpleArea data={dep} x="week" y="cumulative_users" fmt="raw" /></Card>
-          <Card wide title="Robinhood Earn allocation by collateral" sub="today · Maple's syrupUSDG highlighted"><CategoryBars data={rwa.filter((r) => Number(r.allocated_usdg) > 0)} x="collateral" y="allocated_usdg" highlight={["syrupUSDG"]} /></Card>
-        </div>
-      </Section>
-
-      <Note>Maple Finance, syrupUSDG and SYRUP live on the <Link href="/maple" className="text-ink-2 underline underline-offset-2 hover:text-ink">Maple Finance + SYRUP</Link> page.</Note>
     </main>
-  );
-}
-
-function Track({ tag, title, note, flow, foot, accent }: { tag: string; title: string; note: string; flow: string[]; foot: string; accent?: boolean }) {
-  return (
-    <div className={`rounded-[3px] border bg-surface p-4 ${accent ? "border-rh-ink" : "border-line"}`}>
-      <div className="flex items-baseline gap-2">
-        <span className={`font-mono text-[10.5px] uppercase tracking-wider ${accent ? "text-rh-ink" : "text-muted"}`}>{tag}</span>
-        <span className="text-[13px] font-medium text-ink">{title}</span>
-        <span className="text-[11.5px] text-muted">· {note}</span>
-      </div>
-      <ol className="mt-3 flex flex-wrap items-center gap-1.5 text-[12px]">
-        {flow.map((f, i) => (
-          <li key={f} className="flex items-center gap-1.5">
-            {i > 0 && <span className="font-mono text-muted">→</span>}
-            <span className="rounded-[3px] border border-line bg-wash px-2 py-1 text-ink">{f}</span>
-          </li>
-        ))}
-      </ol>
-      <p className="mt-3 text-[11.5px] leading-relaxed text-muted">{foot}</p>
-    </div>
   );
 }

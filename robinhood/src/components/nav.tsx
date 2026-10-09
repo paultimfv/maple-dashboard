@@ -4,9 +4,8 @@ import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 
 const nav = [
-  { href: "/", label: "Business" },
-  { href: "/macro", label: "Macro" },
-  { href: "/model", label: "Model" },
+  { href: "/", label: "Robinhood Chain" },
+  { href: "/earn", label: "Robinhood Earn" },
 ];
 
 type Theme = "light" | "dark";
@@ -51,7 +50,7 @@ export default function Nav() {
     <nav className="sticky top-0 z-20 border-b border-line bg-page/85 backdrop-blur">
       <div className="mx-auto flex max-w-6xl items-center gap-6 px-4 text-sm">
         <span className="py-3 font-mono text-[12px] font-medium uppercase tracking-wider text-ink">
-          Maple Finance
+          Robinhood Chain × Earn
         </span>
         <div className="flex gap-5">
           {nav.map((n) => {
@@ -64,7 +63,7 @@ export default function Nav() {
             );
           })}
         </div>
-        <a href="https://robinhood-earn.vercel.app" className="ml-auto text-[12px] text-muted hover:text-ink">Robinhood Chain × Earn ↗</a>
+        <a href="https://maple-robinhood.vercel.app" className="ml-auto text-[12px] text-muted hover:text-ink">Maple Finance dashboard ↗</a>
         <ThemeToggle />
       </div>
     </nav>

@@ -7,8 +7,8 @@ const sans = Geist({ subsets: ["latin"], variable: "--font-geist-sans" });
 const mono = Geist_Mono({ subsets: ["latin"], variable: "--font-geist-mono" });
 
 export const metadata: Metadata = {
-  title: "Maple Finance",
-  description: "Maple Finance and SYRUP, rebuilt from onchain data",
+  title: "Robinhood Chain × Earn",
+  description: "Self-hosted onchain data on Robinhood Chain and Robinhood Earn",
 };
 
 // applied before paint so a saved theme never flashes the other one; ?theme=light|dark forces one (handy for screenshots)
@@ -22,7 +22,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <Nav />
         {children}
         <footer className="mx-auto max-w-6xl border-t border-line px-4 py-6 font-mono text-[11px] text-muted">
-          Built by Paul Timofeev · onchain data from Ethereum and Robinhood Chain, refreshed daily · not investment advice
+          Built by Paul Timofeev · onchain data from Robinhood Chain and Ethereum, refreshed daily · not investment advice
         </footer>
       </body>
     </html>
