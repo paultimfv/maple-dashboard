@@ -207,7 +207,8 @@ export function CategoryBars({ data, x, y, fmt = "usd", highlight = [] }: { data
         <Tooltip cursor={{ fill: pal.grid, fillOpacity: 0.4 }} contentStyle={{ background: pal.surface, border: `1px solid ${pal.grid}`, borderRadius: 3, fontSize: 12 }}
           labelStyle={{ color: pal.ink, fontWeight: 600 }} itemStyle={{ color: pal.ink2, padding: 0 }} formatter={(v) => [F[fmt](Number(v)), label(y)]} />
         <Bar dataKey={y} maxBarSize={48} radius={[3, 3, 0, 0]} isAnimationActive={false}>
-          {data.map((r) => { const k = String(r[x]), e = entityOf(k);
+          {!highlight.length && (() => { const col = colorsFor(pal, data.map((r) => String(r[x]))); return data.map((r) => <Cell key={String(r[x])} fill={col.get(String(r[x]))} />); })()}
+          {!!highlight.length && data.map((r) => { const k = String(r[x]), e = entityOf(k);
             return <Cell key={k} fill={highlight.includes(k) && e ? pal.entity[e] : highlight.includes(k) ? pal.series[0] : pal.other} />; })}
         </Bar>
       </BarChart>

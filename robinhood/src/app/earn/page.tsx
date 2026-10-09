@@ -1,24 +1,17 @@
-import { rhAum, earnAllocation, earnShare, earnDepositors, earnDepositSizes, bridgeFlow, earnRwaShare, shareOfUsdg, capitalOnChain, holders, poolState } from "@/lib/queries";
+import { earnAllocation, earnDepositors, earnDepositSizes, earnRwaShare, holders } from "@/lib/queries";
 import { Counter, Counters, Card, Section, Note, SimpleArea, SimpleLine, StackedBars, StackedColumns, BarsAndLine, CategoryBars } from "@/components/charts";
 import { fmtUsd, fmtPct } from "@/lib/fmt";
+import { Exhibit } from "@/components/exhibit";
 
 export const dynamic = "force-dynamic";
 
 const last = <T,>(a: T[]) => a[a.length - 1];
-const n = (v: unknown) => Number(v ?? 0);
 
 export default async function EarnPage() {
-  const [alloc, share, dep, sizes, bridge, rwa, hold] = await Promise.all([earnAllocation(), earnShare(), earnDepositors(), earnDepositSizes(), bridgeFlow(), earnRwaShare(), holders()]);
-  const [aum, usdg, cap, pool] = await Promise.all([rhAum(), shareOfUsdg(), capitalOnChain(), poolState()]);
+  const [alloc, dep, sizes, rwa, hold] = await Promise.all([earnAllocation(), earnDepositors(), earnDepositSizes(), earnRwaShare(), holders()]);
   const holderOf = (t: string) => Number(hold.find((r) => r.token === t)?.holders ?? 0);
-  const rwaCredit = rwa.filter((r) => ["syrupUSDG", "mGLO"].includes(String(r.collateral))).reduce((a, r) => a + Number(r.share), 0);
-  const sh = last(share);
   const al = last(alloc);
-  const p = last(pool);
-  const ug = last(usdg);
-  const cl = last(cap);
-  const lastDay = last(aum)?.day;
-  const aumRh = aum.filter((x) => x.day === lastDay).reduce((s, x) => s + n(x.aum_usd), 0);
+  const lastDay = last(alloc)?.day;
 
   return (
     <main className="mx-auto max-w-6xl space-y-12 px-4 py-10">
@@ -29,9 +22,12 @@ export default async function EarnPage() {
       </header>
 
       <Section n="01" tone="rh" title="Robinhood Earn: the distribution channel" lede="Steakhouse USDG vault (steakUSDG) on Robinhood Chain, the contract behind Robinhood Earn. Users = distinct share owners.">
-        <Track tag="Earn" title="Where Maple sits" note="syrupUSDG is collateral Earn lends against" accent
+        <div className="grid gap-4">
+        <Exhibit id="d1" n={1} title="How Robinhood Earn works under the hood" lede="A Web2 front end on DeFi rails: the user taps Earn; their USDG sits in a self-custodial wallet and is lent through a Morpho vault curated by Steakhouse." source="Robinhood Earn support article; onchain, Robinhood Chain" />
+        </div>
+        <Track tag="Earn" title="Where the dollars go" note="users supply USDG; borrowers post collateral" accent
           flow={["Earn deposits (USDG)", "Steakhouse USDG vault", "Morpho markets: USDe, syrupUSDG, mGLO, spUSDG"]}
-          foot={`Earn TVL ${fmtUsd(Number(al?.earn_tvl_usdg ?? 0))} · syrupUSDG is ${fmtPct(Number(sh?.maple_share_of_earn ?? 0))} of it, ${fmtPct(rwaCredit)} sits in RWA credit (Maple + Midas). This is the only place Maple and Robinhood Chain meet.`} />
+          foot={`Earn TVL ${fmtUsd(Number(al?.earn_tvl_usdg ?? 0))} · collateral today: ${rwa.map((r) => `${r.collateral} ${fmtPct(Number(r.share))}`).join(" · ")}. Who gets paid, and which of them have a token: see the Who gets paid tab.`} />
         <Counters cols="md:grid-cols-4">
           <Counter label="Earn users, all-time" value={Number(sizes?.users ?? 0).toLocaleString()} sub={`${Number(sizes?.deposits ?? 0).toLocaleString()} deposits · ${holderOf("steakUSDG (Earn)").toLocaleString()} current holders (Blockscout)`} />
           <Counter label="Median deposit" value={fmtUsd(Number(sizes?.median_deposit ?? 0))} sub={`avg ${fmtUsd(Number(sizes?.avg_deposit ?? 0))} · p90 ${fmtUsd(Number(sizes?.p90_deposit ?? 0))}`} />
@@ -41,27 +37,19 @@ export default async function EarnPage() {
         <div className="grid gap-4 md:grid-cols-2">
           <Card title="Earn users per week" sub="active, and new among them"><SimpleLine data={dep} x="week" ys={["active_users", "new_users"]} fmt="raw" /></Card>
           <Card title="Earn deposits vs net flow" sub="weekly"><BarsAndLine data={dep} x="week" bar="deposited_usd" line="net_flow_usd" /></Card>
-          <Card tone="maple" title="syrupUSDG bridged to / from Robinhood Chain" sub="weekly"><StackedBars data={bridge} x="week" ys={["bridged_in", "bridged_out"]} /></Card>
           <Card title="Cumulative Earn users"><SimpleArea data={dep} x="week" y="cumulative_users" fmt="raw" /></Card>
-          <Card wide title="Robinhood Earn allocation by collateral" sub="today · Maple's syrupUSDG highlighted"><CategoryBars data={rwa.filter((r) => Number(r.allocated_usdg) > 0)} x="collateral" y="allocated_usdg" highlight={["syrupUSDG"]} /></Card>
+          <Card wide tone="maple" title="Robinhood Earn allocation by collateral" sub="USDG lent against each collateral today"><CategoryBars data={rwa.filter((r) => Number(r.share) >= 0.001)} x="collateral" y="allocated_usdg" /></Card>
         </div>
       </Section>
 
       <Section n="02" tone="rh" title="The collateral: what borrowers post" lede="Earn users supply USDG. Borrowers post a yield-bearing token as collateral and borrow it. The collateral mix decides which issuers grow with Earn.">
-        <Counters cols="md:grid-cols-3">
-          <Counter label="syrupUSDG pool AUM" value={fmtUsd(n(p?.total_assets))} sub={`exch rate ${n(p?.exch_rate || 1).toFixed(4)}`} />
-          <Counter label="On Robinhood Chain" value={fmtUsd(aumRh)} sub={`${fmtPct(aumRh / (n(p?.total_assets) || 1))} of pool`} />
-          <Counter label="syrupUSDG share of Earn" value={fmtPct(n(sh?.maple_share_of_earn))} />
-          <Counter label="Share of USDG on RH Chain" value={fmtPct(n(ug?.maple_share_of_usdg))} sub={`USDG supply ${fmtUsd(n(ug?.usdg_supply))} · ${holderOf("USDG").toLocaleString()} holders`} />
-          <Counter label="Share of capital on RH Chain" value={fmtPct(n(cl?.maple_share_of_capital))} sub="onchain: ETH bridged + USDG minted" />
-          <Counter label="Robinhood Earn TVL" value={fmtUsd(n(al?.earn_tvl_usdg))} />
+        <Counters cols="md:grid-cols-4">
+          {rwa.filter((r) => Number(r.share) >= 0.001).slice(0, 4).map((r) => (
+            <Counter key={String(r.collateral)} label={`${r.collateral} share of Earn`} value={fmtPct(Number(r.share))} sub={`${fmtUsd(Number(r.allocated_usdg))} of USDG lent against it`} />
+          ))}
         </Counters>
-        <div className="grid gap-4 md:grid-cols-2">
-          <Card tone="maple" title="Robinhood Earn TVL by collateral"><StackedColumns data={alloc} x="day" y="allocated_usdg" group="collateral" /></Card>
-          <Card title="syrupUSDG share of Robinhood Earn"><SimpleLine data={share} x="day" ys={["maple_share_of_earn"]} /></Card>
-          <Card tone="maple" title="Maple AUM on Robinhood Chain"><StackedColumns data={aum} x="day" y="aum_usd" group="token" /></Card>
-        </div>
-        <Note>syrupUSDG (Maple) and USDe (Ethena) are the two largest collaterals. The full Maple picture lives on the Maple Finance dashboard.</Note>
+        <Card wide tone="maple" title="Robinhood Earn TVL by collateral" sub="daily, onchain"><StackedColumns data={alloc} x="day" y="allocated_usdg" group="collateral" /></Card>
+        <Note>Who these collateral issuers are, how Earn pays them, and their token data: the Who gets paid tab.</Note>
       </Section>
     </main>
   );

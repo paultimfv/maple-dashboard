@@ -2,6 +2,7 @@ import { stablecoinSupplyGlobal, llamaFeesByBucket, llamaFinanceProtocols, llama
 import Link from "next/link";
 import { Counter, Counters, Card, Panel, Section, Note, StackedArea, StackedAreas, StackedColumns, SimpleArea, SimpleLine, Table } from "@/components/charts";
 import { fmtUsd, fmtPct } from "@/lib/fmt";
+import { Exhibit } from "@/components/exhibit";
 
 export const dynamic = "force-dynamic";
 
@@ -39,6 +40,7 @@ export default async function Page() {
       </Section>
 
       <Section n="02" tone="rh" title="Robinhood Chain" lede="Activity, fees and bridged capital are read from the chain (Blockscout stats, L1 bridge and sequencer-inbox contracts on Ethereum, ETH price). DeFiLlama is used only where marked: protocol-level TVL and app-fee categories.">
+        <Exhibit id="d2" n={2} title="Value flow on Robinhood Chain" lede="Two separate streams: gas goes to the chain, app fees stay with the apps." source="Robinhood Chain docs; ArbitrumDAO factsheet; Ethereum SequencerInbox" />
         <Counters cols="md:grid-cols-4">
           <Counter label="Capital on chain" value={fmtUsd(Number(cl?.capital_onchain_usd ?? 0))} sub={`${fmtUsd(Number(cl?.eth_bridged_usd ?? 0))} ETH bridged · ${fmtUsd(Number(cl?.usdg_native ?? 0))} USDG minted`} />
           <Counter label="DeFi TVL (DeFiLlama)" value={fmtUsd(Number(cl?.llama_tvl_usd ?? 0))} sub="protocol-sum, different definition" />
@@ -47,7 +49,6 @@ export default async function Page() {
         </Counters>
         <div className="grid gap-4 md:grid-cols-2">
           <Card title="Capital on Robinhood Chain" sub="onchain: USDG minted + ETH bridged from Ethereum"><StackedAreas data={cap} x="day" ys={["usdg_native", "eth_bridged_usd"]} /></Card>
-          <Card tone="maple" title="Maple share of capital on chain" sub="syrupUSDG on Robinhood Chain ÷ onchain capital · from when capital passed $50M"><SimpleLine data={cap.filter((r) => Number(r.capital_onchain_usd) >= 50e6)} x="day" ys={["maple_share_of_capital"]} /></Card>
           <Card title="Transactions per day"><SimpleArea data={bs} x="day" y="txns" fmt="raw" /></Card>
           <Card title="Accounts per day" sub="active, and new among them · Aug 11–12 spike is a one-off wave of new accounts"><SimpleLine data={bs} x="day" ys={["active_accounts", "new_accounts"]} fmt="raw" /></Card>
           <Card title="Gas fees per day" sub="paid to the sequencer, USD · early-September spike is real (1,400–3,300 ETH/day)"><SimpleArea data={bs} x="day" y="fees_usd" /></Card>

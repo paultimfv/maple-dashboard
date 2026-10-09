@@ -1,6 +1,7 @@
 import { rhAum, earnAllocation, earnShare, interestWeekly, loansWeekly, shareOfUsdg, poolState, utilization, topLoans, syrupPrice, syrupBuybacks, revenueBridge, capitalOnChain, holders, mapleRevenueMonthly, mapleModelMonthly, mapleAumByPool, mapleAumLatest, annualInputs, syrupSupply, mapleAumReported, poolsSnapshot, mapleLenders, mapleBorrowers, ssfDaily, mapleBalanceSheet } from "@/lib/queries";
 import { Counter, Counters, Card, Panel, Section, Note, StackedColumns, SimpleLine, StackedBars, Table, StackedBarsWithLines } from "@/components/charts";
 import { fmtUsd, fmtPct } from "@/lib/fmt";
+import { Exhibit } from "@/components/exhibit";
 
 export const dynamic = "force-dynamic";
 
@@ -102,6 +103,7 @@ export default async function BusinessPage() {
           <span className="text-ink-2">Onchain revenue</span> = open-term <code>ClaimedFundsDistributed</code> (platform + delegate fees) + fixed-term <code>ManagementFeesPaid</code> / <code>ServiceFeesPaid</code> / <code>OriginationFeesPaid</code> + strategy <code>StrategyFeesCollected</code>. WETH pools excluded.
           {" "}<span className="text-ink-2">OTC / offchain</span> = Maple-reported monthly revenue (transparency page) − our onchain fees. It reconciles to Maple&apos;s published OTC desk revenue within ~$60k in most months.
         </Note>
+              <Exhibit id="d4" n={4} title="Maple Finance smart contract map" lede="242 contracts, one pattern repeated per pool. Fees go to the treasury and pool delegate inside every loan payment." source="Maple docs, smart contract architecture; Maple address registry" />
       </Section>
 
       {/* ---------------------------------------------------------------- lenders + borrowers */}
@@ -123,6 +125,8 @@ export default async function BusinessPage() {
 
       {/* ---------------------------------------------------------------- Robinhood channel */}
       <Section n="03" title="syrupUSDG: Maple's Robinhood channel" lede="syrupUSDG is the Maple pool built for USDG. Most of it sits on Robinhood Chain as collateral in Robinhood Earn; the loans and the fees live on Ethereum.">
+        <Exhibit id="d5" n={5} title="Maple × Robinhood Chain value accrual" lede="syrupUSDG sits on Robinhood Chain as Earn collateral; the loans and the fees live on Ethereum." source="onchain, Robinhood Chain and Ethereum; Chainlink CCIP directory; maple-docs #157" />
+        <Exhibit id="d3" n={3} title="Value flow in Robinhood Earn" lede="Earn users are paid by borrowers. A syrupUSDG borrower earns Maple's rate on the collateral and pays Earn's rate on the USDG." source="syrupUSDG loan manager (onchain); FalconX research" />
         <Counters cols="md:grid-cols-3">
           <Counter label="syrupUSDG pool AUM" value={fmtUsd(n(p?.total_assets))} sub={`exch rate ${n(p?.exch_rate || 1).toFixed(4)}`} />
           <Counter label="On Robinhood Chain" value={fmtUsd(aumRh)} sub={`${fmtPct(aumRh / (n(p?.total_assets) || 1))} of pool`} />
@@ -151,6 +155,7 @@ export default async function BusinessPage() {
 
       {/* ---------------------------------------------------------------- SYRUP */}
       <Section n="04" title="SYRUP: value accrual">
+        <Exhibit id="d6" n={6} title="SYRUP value flow" lede="Every revenue line rolls into one monthly number; MIP-021 sends a tiered share of it to buybacks." source="maple.finance/transparency; onchain fees and buyback wallet (Ethereum)" />
         <Counters cols="md:grid-cols-4">
           <Counter label="SYRUP price" value={`$${n(sp?.price_usd).toFixed(4)}`} sub={`mcap ${fmtUsd(n(sp?.mcap_usd))}`} />
           <Counter label="Circulating supply" value={`${(n(sup?.circulating) / 1e6).toFixed(1)}M`} sub={`total ${(n(sup?.total_supply) / 1e6).toFixed(1)}M (contract) − SSF ${(n(sup?.ssf_held) / 1e6).toFixed(1)}M (Maple)`} />

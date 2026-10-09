@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
 const nav = [
   { href: "/", label: "Robinhood Chain" },
   { href: "/earn", label: "Robinhood Earn" },
+  { href: "/who-gets-paid", label: "Who gets paid" },
 ];
 
 type Theme = "light" | "dark";
@@ -63,8 +64,7 @@ export default function Nav() {
             );
           })}
         </div>
-        <a href="https://maple-robinhood.vercel.app" className="ml-auto text-[12px] text-muted hover:text-ink">Maple Finance dashboard ↗</a>
-        <ThemeToggle />
+        <div className="ml-auto"><ThemeToggle /></div>
       </div>
     </nav>
   );
