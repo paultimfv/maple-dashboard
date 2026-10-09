@@ -142,7 +142,7 @@ export function Exhibit({ id, n, title, lede, source }: { id: keyof typeof SPECS
         {lede && <div className="mt-0.5 max-w-3xl text-[11.5px] leading-relaxed text-muted">{lede}</div>}
       </figcaption>
       <div className="overflow-x-auto">
-        <svg ref={ref} viewBox={`0 0 760 ${HEIGHT[id]}`} role="img" aria-label={title} className="block h-auto w-full min-w-[640px] px-3 pb-1 pt-2" />
+        <svg ref={ref} viewBox={`0 0 760 ${HEIGHT[id]}`} role="img" aria-label={title} className="mx-auto block h-auto max-h-[calc(100svh-150px)] w-full px-3 pb-1 pt-2" />
       </div>
       <div className="mx-4 flex justify-between gap-4 border-t border-line py-2.5 font-mono text-[10.5px] text-muted">
         <span>Source: {source}</span><span>@ptimfv</span>
