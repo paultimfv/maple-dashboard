@@ -9,6 +9,8 @@ Two Next.js dashboards reading the Postgres tables built by [maple-pipeline](htt
 
 Queries: `src/lib/queries.ts` in each app. Pages render on request.
 
+Standalone model: [maple-model](https://github.com/paultimfv/maple-model).
+
 ## Run
 
 ```
