@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import Nav from "@/components/nav";
+import Ask from "@/components/ask";
 import "./globals.css";
 
 const sans = Geist({ subsets: ["latin"], variable: "--font-geist-sans" });
@@ -24,6 +25,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <footer className="mx-auto max-w-6xl border-t border-line px-4 py-6 font-mono text-[11px] text-muted">
           Built by Paul Timofeev · onchain data from Ethereum and Robinhood Chain, refreshed daily · not investment advice
         </footer>
+        <Ask site="maple" title="Maple Finance" suggestions={["How has SYRUP's price moved over the last 30 days?", "What was Maple's revenue last month, and where did it come from?", "How much SYRUP has Maple bought back so far?"]} />
       </body>
     </html>
   );

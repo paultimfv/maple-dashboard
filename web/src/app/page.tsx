@@ -48,6 +48,13 @@ export default async function BusinessPage() {
   const cl = last(cap);
   const rb = last(bridgeRev);
 
+  const priceAgo = (days: number) => {
+    const cut = new Date(new Date(String(sp?.day)).getTime() - days * 864e5).toISOString().slice(0, 10);
+    return n([...syrup].reverse().find((x) => String(x.day).slice(0, 10) <= cut)?.price_usd);
+  };
+  const chg = (days: number) => { const a = priceAgo(days); return a ? n(sp?.price_usd) / a - 1 : 0; };
+  const [c7, c30, c365] = [chg(7), chg(30), chg(365)];
+
   const lyoy = yoy(lenders, "new_lenders");
   const iyoy = yoy(borrowers, "interest_paid_usd");
   const signed = (v: number) => `${v >= 0 ? "+" : ""}${fmtPct(v)}`;
@@ -63,6 +70,20 @@ export default async function BusinessPage() {
           Every Maple number on this page is rebuilt from contract events and state on Ethereum and Robinhood Chain (239-contract registry), except OTC desk revenue (published by Maple) and SYRUP price (CoinGecko).
         </p>
       </header>
+
+      {/* ---------------------------------------------------------------- SYRUP price, first thing on the page */}
+      <section className="space-y-4">
+        <Counters cols="grid-cols-2 md:grid-cols-5">
+          <Counter label="SYRUP price" value={`$${n(sp?.price_usd).toFixed(4)}`} sub={`CoinGecko · ${String(sp?.day ?? "").slice(0, 10)}`} />
+          <Counter label="7 days" value={signed(c7)} tone={c7 >= 0 ? "up" : "down"} />
+          <Counter label="30 days" value={signed(c30)} tone={c30 >= 0 ? "up" : "down"} />
+          <Counter label="1 year" value={signed(c365)} tone={c365 >= 0 ? "up" : "down"} />
+          <Counter label="Market cap" value={fmtUsd(n(sp?.mcap_usd))} sub={`P/S ${psNow.toFixed(1)}x TTM`} />
+        </Counters>
+        <div className="grid gap-4 md:grid-cols-2">
+          <Card wide tall title="SYRUP price" sub="daily, USD"><SimpleLine data={syrup} x="day" ys={["price_usd"]} fmt="rate" /></Card>
+        </div>
+      </section>
 
       {/* ---------------------------------------------------------------- the business */}
       <Section n="01" title="The business: revenue, AUM, multiple">
@@ -156,8 +177,7 @@ export default async function BusinessPage() {
       {/* ---------------------------------------------------------------- SYRUP */}
       <Section n="04" title="SYRUP: value accrual">
         <Exhibit id="d6" n={6} title="SYRUP value flow" lede="Every revenue line rolls into one monthly number; MIP-021 sends a tiered share of it to buybacks." source="maple.finance/transparency; onchain fees and buyback wallet (Ethereum)" />
-        <Counters cols="md:grid-cols-4">
-          <Counter label="SYRUP price" value={`$${n(sp?.price_usd).toFixed(4)}`} sub={`mcap ${fmtUsd(n(sp?.mcap_usd))}`} />
+        <Counters cols="md:grid-cols-3">
           <Counter label="Circulating supply" value={`${(n(sup?.circulating) / 1e6).toFixed(1)}M`} sub={`total ${(n(sup?.total_supply) / 1e6).toFixed(1)}M (contract) − SSF ${(n(sup?.ssf_held) / 1e6).toFixed(1)}M (Maple)`} />
           <Counter label="Buybacks, all-time" value={fmtUsd(bbTotal)} sub={`${buybacks.length} months · through ${String(last(buybacks)?.month ?? "").slice(0, 7)}`} />
           <Counter label="MIP-021 tier, last month" value={fmtPct(n(m?.mip021_tier))} sub={`on ${fmtUsd(n(m?.total_revenue))} revenue: 10% < $1.5M · 20% < $2M · 30% above`} />
@@ -168,10 +188,9 @@ export default async function BusinessPage() {
           <Counter label="SSF SYRUP, change since Aug 2025" value={`${((n(sf?.syrup_held) - n(ssf[0]?.syrup_held)) / 1e6).toFixed(1)}M`} sub="vs SYRUP bought back over the same period" />
         </Counters>
         <div className="grid gap-4 md:grid-cols-2">
-          <Card title="SYRUP price"><SimpleLine data={syrup} x="day" ys={["price_usd"]} fmt="rate" /></Card>
           <Card title="Syrup Strategic Fund: SYRUP held" sub="Maple-reported"><SimpleLine data={ssf} x="day" ys={["syrup_held"]} fmt="raw" /></Card>
           <Card title="SYRUP buybacks by month" sub="USD spent"><StackedBars data={buybacks} x="month" ys={["amount_usd"]} /></Card>
-          <Card title="Average buyback price" sub="USD per SYRUP"><SimpleLine data={buybacks} x="month" ys={["avg_price"]} fmt="rate" /></Card>
+          <Card wide title="Average buyback price" sub="USD per SYRUP"><SimpleLine data={buybacks} x="month" ys={["avg_price"]} fmt="rate" /></Card>
         </div>
         <Note>
           Buyback amounts and SSF holdings are Maple-reported (transparency page). June, July and August 2026 are verified onchain: each matches a SYRUP withdrawal from Binance that ends in the same wallet (0x99f0…a9ca), within a few tokens (July exactly). Maple executes buybacks on a centralised exchange, not onchain.
