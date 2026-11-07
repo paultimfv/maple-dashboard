@@ -250,7 +250,7 @@ export async function syrupBuybacks() {
 }
 
 // ---- Revenue bridge: syrupUSDG monthly Maple revenue -> MIP-021 tier -> implied buyback ----
-// MIP-021: 10% of monthly revenue < $1.5M, 20% $1.5–2M, 30% > $2M (on that month's total protocol revenue).
+// MIP-021: 10% of monthly revenue < $1.5M, 20% $1.5–2M, 30% > $2M, on Maple's total monthly revenue (monthly_model.mip021_tier).
 // Protocol-wide revenue needs all pools; here we show syrupUSDG's contribution and the share of Maple's onchain fees it represents.
 export async function revenueBridge() {
   const rows = await q(`
@@ -263,9 +263,8 @@ export async function revenueBridge() {
     )
     SELECT month, syrupusdg_revenue, onchain_revenue_all_pools, syrupusdg_gross_interest,
            syrupusdg_revenue / NULLIF(onchain_revenue_all_pools, 0) AS syrupusdg_share_of_onchain_rev,
-           CASE WHEN onchain_revenue_all_pools > 2000000 THEN 0.30 WHEN onchain_revenue_all_pools >= 1500000 THEN 0.20 ELSE 0.10 END AS mip21_tier,
-           onchain_revenue_all_pools * CASE WHEN onchain_revenue_all_pools > 2000000 THEN 0.30 WHEN onchain_revenue_all_pools >= 1500000 THEN 0.20 ELSE 0.10 END AS implied_buyback_onchain_only
-    FROM m ORDER BY month`, [OTLM_SYRUPUSDG, WETH_OTLM]);
+           mm.mip021_tier AS mip21_tier, mm.total_revenue * mm.mip021_tier AS implied_buyback
+    FROM m LEFT JOIN monthly_model mm USING (month) ORDER BY month`, [OTLM_SYRUPUSDG, WETH_OTLM]);
   return rows.map(num);
 }
 
@@ -440,13 +439,13 @@ export async function stableSupplyLatest() {
   return rows.map(num);
 }
 
-// ---- Maple protocol economics (pipeline views: monthly_revenue, monthly_model, aum_monthly, annual_model_inputs) ----
-// Every onchain line is rebuilt from contract events; offchain = OTC desk (Maple-published, to May 2026),
-// then implied from onchain MIP-021 buybacks (buyback ÷ tier − onchain fees).
+// ---- Maple protocol economics (pipeline views: monthly_revenue, monthly_model, aum_monthly, model_ledger) ----
+// Revenue = syrupUSD (syrupUSDC/USDT/USDG loan managers + strategies) + other pools (every other onchain pool), both from
+// contract fee events, + offchain = Maple-reported total − onchain. Total is always Maple-reported. When onchain fees exceed
+// Maple's number (Sep–Oct 2026) offchain is null ("not separable"), never 0.
 export async function mapleRevenueMonthly() {
   const rows = await q(`
-    SELECT month, open_term_platform + open_term_delegate AS open_term_loans, fixed_term AS fixed_term_loans,
-           strategy AS strategies, offchain_revenue AS otc_offchain, onchain_revenue, total_revenue, offchain_unknown
+    SELECT month, syrup_revenue, pool_revenue, offchain_revenue, onchain_revenue, total_revenue, offchain_separable, offchain_unknown
     FROM monthly_revenue WHERE month >= '2024-01-01' AND month < date_trunc('month', now()) ORDER BY month`);
   return rows.map(num);
 }
@@ -482,6 +481,11 @@ export async function ssfDaily() {
   const rows = await q(`SELECT day, syrup_held, liquid_assets_usd FROM ssf_daily ORDER BY day`);
   return rows.map(num);
 }
+// Maple's own "Key financials" (transparency page, snapshotted daily): gross revenue TTM, protocol revenue TTM, NIM, treasury
+export async function mapleKpis() {
+  const rows = await q(`SELECT * FROM maple_kpis ORDER BY day DESC LIMIT 1`);
+  return rows.map(num);
+}
 export async function mapleBalanceSheet() {
   const rows = await q(`SELECT * FROM maple_balance_sheet ORDER BY day DESC LIMIT 1`);
   return rows.map(num);
@@ -504,11 +508,15 @@ export async function mapleAumReported() {
 }
 export async function poolsSnapshot() {
   const rows = await q(`
-    WITH s AS (SELECT * FROM maple_pool_state WHERE day = (SELECT max(day) FROM maple_pool_state) AND tvl_usd > 1000)
+    WITH s AS (SELECT * FROM maple_pool_state WHERE day = (SELECT max(day) FROM maple_pool_state) AND tvl_usd > 1000),
+    j AS (
+      SELECT s.*, ps.total_assets
+      FROM s LEFT JOIN contracts k ON k.address = lower(s.pool_address)
+      LEFT JOIN LATERAL (SELECT total_assets FROM pool_state WHERE pool = k.pool_group ORDER BY day DESC LIMIT 1) ps ON true)
     SELECT pool AS pool_name, tvl_usd AS tvl, tvl_usd / sum(tvl_usd) OVER () AS share_of_protocol_tvl,
-           tvl_usd - collateral_usd AS deposits_usd, collateral_usd, principal_out_usd AS loans_outstanding_usd,
-           principal_out_usd / NULLIF(tvl_usd - collateral_usd, 0) AS utilization, day
-    FROM s ORDER BY tvl_usd DESC`);
+           coalesce(total_assets, tvl_usd - collateral_usd) AS deposits_usd, collateral_usd, principal_out_usd AS loans_outstanding_usd,
+           principal_out_usd / NULLIF(coalesce(total_assets, tvl_usd - collateral_usd), 0) AS utilization, day
+    FROM j ORDER BY tvl_usd DESC`);
   return rows.map(num);
 }
 
@@ -543,9 +551,9 @@ export async function modelInputs(): Promise<ModelInputs> {
          WHERE s.token = 'syrupUSDG' ORDER BY s.day DESC LIMIT 1) AS syrup_on_earn,
       (SELECT sum(CASE WHEN f.kind = 'supply' THEN f.assets ELSE -f.assets END) FROM morpho_flows f WHERE f.on_behalf = $1) AS earn_tvl,
       (SELECT sum(onchain_revenue) FROM last12) AS ttm_onchain,
-      (SELECT sum(offchain_revenue) FROM last12) AS ttm_offchain,
+      (SELECT sum(total_revenue) - sum(onchain_revenue) FROM last12) AS ttm_offchain,
       (SELECT avg(l.onchain_revenue * 12 / d.deposits) FROM last3 l JOIN dep d USING (month)) AS take_rate_q,
-      (SELECT avg(offchain_revenue) FROM last3) AS offchain_monthly_q,
+      (SELECT avg(total_revenue - onchain_revenue) FROM last3) AS offchain_monthly_q,
       (SELECT d.deposits / s.supply_usd FROM dep d, stablecoin_supply s WHERE d.month = '2025-12-01' AND s.day = '2025-12-31') AS core_share_2025,
       (SELECT mcap_usd FROM syrup_price ORDER BY day DESC LIMIT 1) AS mcap,
       (SELECT price_usd FROM syrup_price ORDER BY day DESC LIMIT 1) AS price,

@@ -4,7 +4,7 @@ import { usePalette } from "@/components/charts";
 import { SPECS, type ExhibitSpec, type Kind } from "@/lib/exhibits";
 
 const NS = "http://www.w3.org/2000/svg";
-const FONT = "var(--font-geist-sans), -apple-system, sans-serif";
+const FONT = "var(--font-body), -apple-system, sans-serif";
 const MONO = "var(--font-geist-mono), ui-monospace, monospace";
 
 /* entity colors, same as the charts: Robinhood green, Maple coral, Morpho/Steakhouse blue, SYRUP rust */
@@ -125,7 +125,7 @@ const HEIGHT: Record<string, number> = { d1: 690, d2: 450, d3: 530, d4: 640, d5:
 export function Exhibit({ id, n, title, lede, source }: { id: keyof typeof SPECS | string; n: number; title: string; lede?: string; source: string }) {
   const ref = useRef<SVGSVGElement>(null);
   const pal = usePalette();
-  const dark = pal.surface !== "#f6f6f6";
+  const dark = pal.dark;
   useEffect(() => {
     if (!ref.current) return;
     const go = () => draw(ref.current!, `ex-${id}`, SPECS[id], {
@@ -135,16 +135,15 @@ export function Exhibit({ id, n, title, lede, source }: { id: keyof typeof SPECS
     document.fonts?.ready.then(go);   // re-measure label boxes once Geist has loaded
   }, [id, pal, dark]);
   return (
-    <figure className="m-0 overflow-hidden rounded-[3px] border border-line bg-surface">
-      <figcaption className="px-4 pt-4">
-        <div className="font-mono text-[10.5px] uppercase tracking-wider text-accent-ink">Exhibit {n}</div>
-        <div className="mt-0.5 text-[13px] font-medium text-ink">{title}</div>
-        {lede && <div className="mt-0.5 max-w-3xl text-[11.5px] leading-relaxed text-muted">{lede}</div>}
+    <figure className="fig overflow-hidden">
+      <figcaption className="fig-h">
+        <span className="fig-t"><span className="text-accent-ink">Exhibit {n}.</span> {title}</span>
+        {lede && <span className="fig-s max-w-3xl">{lede}</span>}
       </figcaption>
       <div className="overflow-x-auto">
-        <svg ref={ref} viewBox={`0 0 760 ${HEIGHT[id]}`} role="img" aria-label={title} className="mx-auto block h-auto max-h-[calc(100svh-150px)] w-full px-3 pb-1 pt-2" />
+        <svg ref={ref} viewBox={`0 0 760 ${HEIGHT[id]}`} role="img" aria-label={title} className="mx-auto block h-auto max-h-[calc(100svh-150px)] w-full rounded-[2px] bg-surface px-3 pb-1 pt-2" />
       </div>
-      <div className="mx-4 flex justify-between gap-4 border-t border-line py-2.5 font-mono text-[10.5px] text-muted">
+      <div className="flex justify-between gap-4 py-2.5 text-[11.5px] text-muted">
         <span>Source: {source}</span><span>@ptimfv</span>
       </div>
     </figure>

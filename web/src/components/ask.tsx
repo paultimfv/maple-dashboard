@@ -128,13 +128,13 @@ export default function Ask({ site, title, suggestions = [] }: { site: string; t
 }
 
 const CSS = `
-[data-ask-ui]{--pa-bg:var(--surface,var(--panel,#141922));--pa-ink:var(--ink,var(--text,#e6e9ef));--pa-mut:var(--muted,#8a93a5);--pa-line:var(--line,#2a3140);--pa-acc:var(--accent,#8fb3ff);--pa-page:var(--page,var(--bg,#0d1117));font-family:var(--font-sans,ui-sans-serif,system-ui,sans-serif)}
+[data-ask-ui]{--pa-bg:var(--surface,var(--panel,#141922));--pa-ink:var(--ink,var(--text,#e6e9ef));--pa-mut:var(--muted,#8a93a5);--pa-line:var(--line,#2a3140);--pa-acc:var(--accent,#8fb3ff);--pa-page:var(--page,var(--bg,#0d1117));font-family:inherit}
 .pa-fab{position:fixed;right:18px;bottom:18px;z-index:60;display:flex;align-items:center;gap:10px;padding:10px 14px;border-radius:999px;border:1px solid var(--pa-line);background:var(--pa-bg);color:var(--pa-ink);font-size:13px;cursor:pointer;box-shadow:0 8px 24px -10px rgba(0,0,0,.5)}
 .pa-fab:hover{border-color:var(--pa-acc)}
 .pa-fab kbd,.pa-head button{font:11px var(--font-mono,ui-monospace,monospace);color:var(--pa-mut);border:1px solid var(--pa-line);border-radius:4px;padding:1px 6px;background:transparent}
-.pa-panel{position:fixed;right:18px;bottom:18px;z-index:60;width:min(440px,calc(100vw - 24px));max-height:min(620px,calc(100vh - 36px));display:flex;flex-direction:column;border:1px solid var(--pa-line);border-radius:10px;background:var(--pa-bg);color:var(--pa-ink);box-shadow:0 24px 64px -20px rgba(0,0,0,.6);overflow:hidden}
+.pa-panel{position:fixed;right:18px;bottom:18px;z-index:60;width:min(440px,calc(100vw - 24px));max-height:min(620px,calc(100vh - 36px));display:flex;flex-direction:column;border:1px solid var(--pa-line);border-radius:4px;background:var(--pa-bg);color:var(--pa-ink);box-shadow:0 24px 64px -20px rgba(0,0,0,.6);overflow:hidden}
 @media (max-width:520px){.pa-panel{right:12px;left:12px;bottom:12px;width:auto;max-height:calc(100vh - 24px)}.pa-fab{right:12px;bottom:12px}}
-.pa-head{display:flex;justify-content:space-between;align-items:center;padding:10px 14px;border-bottom:1px solid var(--pa-line);font:11px var(--font-mono,ui-monospace,monospace);text-transform:uppercase;letter-spacing:.06em;color:var(--pa-mut)}
+.pa-head{display:flex;justify-content:space-between;align-items:center;padding:11px 14px;border-bottom:2px solid var(--pa-ink);font-size:13px;font-weight:600;color:var(--pa-ink)}
 .pa-head button{cursor:pointer;font-size:14px;line-height:1}
 .pa-log{flex:1;overflow-y:auto;padding:12px 14px;display:flex;flex-direction:column;gap:10px;min-height:120px}
 .pa-empty p{font-size:13px;line-height:1.5;color:var(--pa-mut);margin:0 0 10px}
@@ -145,7 +145,7 @@ const CSS = `
 .pa-dots{color:var(--pa-mut)}
 .pa-hits{border-top:1px solid var(--pa-line);padding:6px}
 .pa-hit{display:flex;justify-content:space-between;gap:10px;width:100%;text-align:left;background:transparent;border:0;border-radius:6px;padding:7px 8px;font-size:13px;color:var(--pa-ink);cursor:pointer}
-.pa-hit em{font:10.5px var(--font-mono,ui-monospace,monospace);font-style:normal;color:var(--pa-mut);text-transform:uppercase}
+.pa-hit em{font-size:11px;font-style:normal;color:var(--pa-mut)}
 .pa-hit.on,.pa-hit:hover{background:var(--pa-page)}
 .pa-hint{font-size:11px;color:var(--pa-mut);padding:4px 8px 2px}
 .pa-in{display:flex;gap:8px;padding:10px;border-top:1px solid var(--pa-line)}

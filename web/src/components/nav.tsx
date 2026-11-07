@@ -39,7 +39,7 @@ function ThemeToggle() {
   // shows the mode you'd switch to: moon in light, sun in dark
   return (
     <button onClick={flip} aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"} title={theme === "dark" ? "Light mode" : "Dark mode"}
-      className="grid h-8 w-8 place-items-center rounded-[3px] border border-line text-ink-2 hover:border-line-strong hover:text-ink">
+      className="grid h-8 w-8 place-items-center rounded-full border border-line text-ink-2 hover:border-line-strong hover:text-ink">
       {theme === null ? null : theme === "dark" ? sun : moon}
     </button>
   );
@@ -50,9 +50,9 @@ export default function Nav() {
   return (
     <nav className="sticky top-0 z-20 border-b border-line bg-page/85 backdrop-blur">
       <div className="mx-auto flex max-w-6xl items-center gap-6 px-4 text-sm">
-        <span className="py-3 font-mono text-[12px] font-medium uppercase tracking-wider text-ink">
-          Maple Finance
-        </span>
+        <a href="/" className="py-3 text-[15px] font-extrabold tracking-[-0.03em] text-ink">
+          Maple<span className="text-accent">.</span>
+        </a>
         <div className="flex gap-5">
           {nav.map((n) => {
             const on = n.href === "/" ? path === "/" : path.startsWith(n.href);
@@ -64,8 +64,8 @@ export default function Nav() {
             );
           })}
         </div>
-        <a href="https://robinhood-earn.vercel.app" className="ml-auto text-[12px] text-muted hover:text-ink">Robinhood Chain × Earn ↗</a>
-        <ThemeToggle />
+        <a href="https://robinhood-earn.vercel.app" className="ml-auto hidden text-[12px] text-muted hover:text-ink sm:inline">Robinhood Chain × Earn ↗</a>
+        <div className="ml-auto sm:ml-0"><ThemeToggle /></div>
       </div>
     </nav>
   );

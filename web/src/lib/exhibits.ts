@@ -143,7 +143,7 @@ d6: {
     { id: "s1", x: 10, y: 14, w: 176, h: 62, t: "Open-term loan fees", sub: ["Inside each payment", "(platform + delegate)"], kind: "maple" },
     { id: "s2", x: 200, y: 14, w: 176, h: 62, t: "Fixed-term fees", sub: ["Service + origination"], kind: "maple" },
     { id: "s3", x: 390, y: 14, w: 176, h: 62, t: "Strategy fees", sub: ["Aave / Sky", "$0 since May 2026"], kind: "maple" },
-    { id: "s4", x: 580, y: 14, w: 170, h: 62, t: "Offchain revenue", sub: ["OTC desk and other", "(Maple-reported)"], kind: "maple" },
+    { id: "s4", x: 580, y: 14, w: 170, h: 62, t: "Offchain revenue", sub: ["Direct / institutional", "(Maple-reported − onchain)"], kind: "maple" },
     { id: "rev", x: 200, y: 124, w: 360, h: 62, t: "Maple monthly revenue", sub: ["Sep 2026: $1.57M (Maple-reported)", "Trailing 12 months: $22.3M"], kind: "maple" },
     { id: "mip", x: 50, y: 236, w: 310, h: 62, t: "MIP-021 buyback", sub: ["10% under $1.5M · 20% to $2M · 30% above", "Sep 2026 revenue → 20% tier (not yet paid)"], kind: "syrup" },
     { id: "rest", x: 410, y: 236, w: 310, h: 62, t: "Rest of revenue", sub: ["Maple DAO Foundation:", "operations and reserves"], kind: "maple" },

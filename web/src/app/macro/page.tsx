@@ -15,10 +15,12 @@ export default async function MacroPage() {
   const sh = last(share);
   return (
     <main className="mx-auto max-w-6xl space-y-12 px-4 py-10">
-      <header className="space-y-3">
-        <div className="font-mono text-[11px] uppercase tracking-wider text-muted">Model drivers · data as of {String(sg?.day ?? "").slice(0, 10)}</div>
-        <h1 className="text-[28px] font-semibold leading-tight tracking-tight">Macro</h1>
-        <p className="max-w-3xl text-[13px] leading-relaxed text-ink-2">The two outside drivers the SYRUP model grows Maple with: the stablecoin market Maple lends into, and Robinhood Earn as a distribution channel.</p>
+      <header className="sec-h">
+        <h1 className="sec-t page-t">Macro</h1>
+        <div>
+          <p className="sec-l">The two outside drivers the SYRUP model grows Maple with: the stablecoin market Maple lends into, and Robinhood Earn as a distribution channel.</p>
+          <p className="mt-3 text-[12px] text-muted">Model drivers, data as of {String(sg?.day ?? "").slice(0, 10)}</p>
+        </div>
       </header>
 
       <Section n="01" title="Stablecoins: the market Maple lends into" lede="Maple's deposits are dollars onchain, so the model ties core deposits to total stablecoin supply (DeFiLlama, all chains, USD-pegged).">

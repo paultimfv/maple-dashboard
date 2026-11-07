@@ -2,7 +2,7 @@
 import { createContext, useContext, useEffect, useState } from "react";
 import {
   ResponsiveContainer, AreaChart, Area, BarChart, Bar, Cell, LineChart, Line, ComposedChart,
-  XAxis, YAxis, Tooltip, Legend, CartesianGrid, ReferenceLine,
+  XAxis, YAxis, Tooltip, Legend, CartesianGrid, ReferenceLine, ReferenceDot, ReferenceArea,
 } from "recharts";
 import { fmtUsd, fmtPct } from "@/lib/fmt";
 
@@ -13,8 +13,8 @@ type Row = Record<string, unknown>;
    and coral, the pair colorblind readers confuse. Light coral/amber/green sit below 3:1 on the card, so every chart
    keeps a legend + tooltip and the tables carry the values. Brand lime (#ccff00) is for UI accents only, never marks. */
 const BASE = {
-  light: { other: "#d6d2ce", surface: "#f6f6f6", grid: "#e6e3e0", axis: "#8a8683", ink: "#141414", ink2: "#4b4847", ref: "#8a8683" },
-  dark: { other: "#4a4440", surface: "#181614", grid: "#2a2724", axis: "#8d8681", ink: "#f6f3f0", ink2: "#c9c3be", ref: "#8d8681" },
+  light: { other: "#d8cec6", surface: "#f8f5f2", grid: "#ddd3cb", axis: "#8f8077", ink: "#1f140d", ink2: "#57483f", ref: "#8f8077" },
+  dark: { other: "#4a4440", surface: "#1b1410", grid: "#3a2f28", axis: "#8d8681", ink: "#f6f3f0", ink2: "#c9c3be", ref: "#8d8681" },
 };
 const SERIES = {
   maple: { light: ["#f26b3a", "#2b6cb0", "#e8a33a", "#a8402a", "#1f9e8a"], dark: ["#e8663a", "#4b8fe0", "#bf8418", "#b83c3c", "#1f9e88"] },
@@ -30,7 +30,7 @@ const ToneCtx = createContext<Tone>("maple");
 export function ToneScope({ tone, children }: { tone: Tone; children: React.ReactNode }) {
   return <ToneCtx.Provider value={tone}>{children}</ToneCtx.Provider>;
 }
-type Pal = (typeof BASE)["light"] & { series: string[]; entity: { maple: string; rh: string } };
+type Pal = (typeof BASE)["light"] & { dark: boolean; series: string[]; entity: { maple: string; rh: string } };
 
 /** follows the <html data-theme> toggle and the OS setting */
 export function usePalette(): Pal {
@@ -49,7 +49,7 @@ export function usePalette(): Pal {
     return () => { mo.disconnect(); mq.removeEventListener("change", read); };
   }, []);
   const m = dark ? "dark" : "light";
-  return { ...BASE[m], series: SERIES[tone][m], entity: ENTITY[m] };
+  return { ...BASE[m], dark: m === "dark", series: SERIES[tone][m], entity: ENTITY[m] };
 }
 
 /** series named here render grey and go last in the stack (i.e. on top), so they don't interrupt the real buckets */
@@ -69,7 +69,8 @@ function colorsFor(pal: Pal, keys: string[]) {
 
 /* readable names for column keys; anything unlisted falls back to "snake case → words" */
 const LABELS: Record<string, string> = {
-  open_term_loans: "Open-term loans", fixed_term_loans: "Fixed-term loans", strategies: "Strategies", otc_offchain: "OTC / offchain",
+  syrup_revenue: "syrupUSD", pool_revenue: "Other pools", offchain_revenue: "Offchain", loans_syrupusdc: "syrupUSDC", loans_syrupusdt: "syrupUSDT",
+  loans_syrupusdg: "syrupUSDG", loans_other: "Other pools", loans_total: "Loans outstanding", deposits_total: "Deposits",
   deposits_usd: "Lender deposits", collateral_usd: "Borrower collateral", ps_ttm: "P/S", revenue_yield_on_aum: "Revenue yield",
   new_lenders: "New", returning_lenders: "Returning", cumulative_lenders: "Lenders", new_borrowers: "New", existing_borrowers: "Existing",
   interest_paid_usd: "Interest paid", maple_share_of_earn: "syrupUSDG share", total_assets: "Pool AUM", loans_outstanding: "Loans outstanding",
@@ -97,74 +98,96 @@ const fmtDayLong = (d: unknown) => { const s = String(d).slice(0, 10); const m =
 
 /* shared chrome: hairline solid grid, recessive axes, tooltip and legend on text tokens */
 function chrome(pal: Pal, fmt: Fmt, x: string, legend: boolean) {
-  const tick = { fill: pal.axis, fontSize: 10.5, fontFamily: "var(--font-geist-mono)" };
+  const tick = { fill: pal.axis, fontSize: 11, fontFamily: "var(--font-num)" };
   return [
-    <CartesianGrid key="g" stroke={pal.grid} vertical={false} />,
-    <XAxis key="x" dataKey={x} tickFormatter={fmtDay} tick={tick} tickLine={false} axisLine={{ stroke: pal.grid }} minTickGap={28} padding={{ right: 8 }} />,
-    <YAxis key="y" tickFormatter={AX[fmt]} width={58} tick={tick} tickLine={false} axisLine={false} />,
-    <Tooltip key="t" cursor={{ stroke: pal.axis, strokeWidth: 1, fill: pal.grid, fillOpacity: 0.4 }}
-      contentStyle={{ background: pal.surface, border: `1px solid ${pal.grid}`, borderRadius: 3, fontSize: 12, boxShadow: "0 4px 16px rgba(0,0,0,0.08)" }}
-      labelStyle={{ color: pal.ink, fontWeight: 600, marginBottom: 4 }} itemStyle={{ color: pal.ink2, padding: 0 }}
+    <CartesianGrid key="g" stroke={pal.grid} strokeDasharray="1 3" vertical={false} />,
+    <XAxis key="x" dataKey={x} tickFormatter={fmtDay} tick={tick} tickLine={false} axisLine={{ stroke: pal.ink2 }} minTickGap={36} padding={{ right: 4 }} />,
+    <YAxis key="y" orientation="right" tickFormatter={AX[fmt]} width={56} tick={tick} tickLine={false} axisLine={false} />,
+    <Tooltip key="t" cursor={{ stroke: pal.ink, strokeWidth: 1, fill: pal.grid, fillOpacity: 0.5 }}
+      contentStyle={{ background: pal.ink, border: 0, borderRadius: 2, fontSize: 12, padding: "8px 10px", fontFamily: "var(--font-num)" }}
+      labelStyle={{ color: pal.surface, fontWeight: 600, marginBottom: 4 }} itemStyle={{ color: pal.surface, padding: 0, opacity: 0.85 }}
       formatter={(v, n) => [F[fmt](Number(v)), label(String(n))]} labelFormatter={fmtDayLong} />,
-    legend ? <Legend key="l" iconType="square" iconSize={8} align="left" verticalAlign="top" itemSorter={null} wrapperStyle={{ paddingBottom: 8 }}
-      formatter={(v) => <span style={{ color: pal.ink2, fontSize: 11.5 }}>{label(String(v))}</span>} /> : null,
+    legend ? <Legend key="l" iconType="rect" iconSize={10} align="left" verticalAlign="top" itemSorter={null} wrapperStyle={{ paddingBottom: 10, marginLeft: -4 }}
+      formatter={(v) => <span style={{ color: pal.ink2, fontSize: 12.5 }}>{label(String(v))}</span>} /> : null,
   ];
 }
 
-export function Counter({ label, value, sub, tone }: { label: string; value: string; sub?: string; tone?: "up" | "down" }) {
+/** a stat's own history, so the number reads against where it has been */
+function Spark({ d }: { d: number[] }) {
+  const v = d.filter((x) => Number.isFinite(x));
+  if (v.length < 3) return null;
+  const lo = Math.min(...v), hi = Math.max(...v), sp = hi - lo || 1;
+  const pts = v.map((y, i) => [(i / (v.length - 1)) * 100, 26 - ((y - lo) / sp) * 24]);
+  const [ex, ey] = pts[pts.length - 1];
   return (
-    <div className="bg-surface px-4 py-3.5">
-      <div className="font-mono text-[10.5px] uppercase tracking-wider text-muted">{label}</div>
-      <div className={`mt-1.5 text-[22px] font-semibold leading-none tracking-tight ${tone === "up" ? "text-up" : tone === "down" ? "text-down" : "text-ink"}`}>{value}</div>
-      {sub && <div className="mt-1.5 text-[11.5px] leading-snug text-muted">{sub}</div>}
+    <div className="stat-spark" aria-hidden>
+      <svg viewBox="0 0 100 28" preserveAspectRatio="none">
+        <polyline points={pts.map((p) => p.join(",")).join(" ")} fill="none" stroke="currentColor" strokeWidth="1.5" vectorEffect="non-scaling-stroke" strokeLinejoin="round" />
+      </svg>
+      <i style={{ left: `${ex}%`, top: `${(ey / 28) * 100}%` }} />
+    </div>
+  );
+}
+
+export function Counter({ label, value, sub, tone, spark, delta }: { label: string; value: string; sub?: string; tone?: "up" | "down"; spark?: number[]; delta?: number }) {
+  return (
+    <div className="stat">
+      <div className="stat-l">{label}</div>
+      <div className="stat-row">
+        <div className={`stat-v ${tone === "up" ? "is-up" : tone === "down" ? "is-down" : ""}`}>{value}</div>
+        {delta != null && Number.isFinite(delta) && <div className={`stat-d ${delta >= 0 ? "is-up" : "is-down"}`}>{delta >= 0 ? "▲" : "▼"} {Math.abs(delta * 100).toFixed(0)}% <span>y/y</span></div>}
+      </div>
+      {spark && <Spark d={spark} />}
+      {sub && <div className="stat-s">{sub}</div>}
     </div>
   );
 }
 
 /** a row of counters sharing hairline dividers, terminal-style */
 export function Counters({ cols = "md:grid-cols-3 lg:grid-cols-6", children }: { cols?: string; children: React.ReactNode }) {
-  return <div className={`grid grid-cols-2 gap-px overflow-hidden rounded-[3px] border border-line bg-line ${cols}`}>{children}</div>;
+  return <div className={`stats grid grid-cols-2 ${cols}`}>{children}</div>;
 }
 
 export function Card({ title, sub, children, tall, wide, tone }: { title: string; sub?: string; children: React.ReactNode; tall?: boolean; wide?: boolean; tone?: Tone }) {
   if (tone) return <ToneScope tone={tone}><Card title={title} sub={sub} tall={tall} wide={wide}>{children}</Card></ToneScope>;
   return (
-    <div className={`rounded-[3px] border border-line bg-surface p-4 ${wide ? "md:col-span-2" : ""}`}>
-      <div className="mb-2">
-        <div className="text-[13px] font-medium text-ink">{title}</div>
-        {sub && <div className="mt-0.5 text-[11.5px] text-muted">{sub}</div>}
-      </div>
+    <figure className={`fig ${wide ? "md:col-span-2" : ""}`}>
+      <figcaption className="fig-h"><span className="fig-t">{title}</span>{sub && <span className="fig-s">{sub}</span>}</figcaption>
       <div className={tall ? "h-80" : "h-60"}>{children}</div>
-    </div>
+    </figure>
   );
 }
 
 export function Panel({ title, sub, children }: { title: string; sub?: string; children: React.ReactNode }) {
   return (
-    <div className="rounded-[3px] border border-line bg-surface p-4">
-      <div className="mb-3">
-        <div className="text-[13px] font-medium text-ink">{title}</div>
-        {sub && <div className="mt-0.5 text-[11.5px] text-muted">{sub}</div>}
-      </div>
+    <div className="fig">
+      <div className="fig-h"><span className="fig-t">{title}</span>{sub && <span className="fig-s">{sub}</span>}</div>
       {children}
     </div>
   );
 }
 
-export function Section({ n, title, lede, tone = "maple", children }: { n: string; title: string; lede?: string; tone?: Tone; children: React.ReactNode }) {
+export function Section({ n, title, lede, tone = "maple", children }: { n?: string; title: string; lede?: React.ReactNode; tone?: Tone; children: React.ReactNode }) {
   return (
     <ToneScope tone={tone}>
-    <section className="space-y-4">
-      <div className="flex items-baseline gap-3 border-b border-line pb-2">
-        {tone === "rh"
-          ? <span className="self-center rounded-[2px] bg-rh px-1.5 py-px font-mono text-[11px] font-medium text-black">{n}</span>
-          : <span className="font-mono text-[11px] text-accent-ink">{n}</span>}
-        <h2 className="text-[17px] font-semibold tracking-tight">{title}</h2>
-      </div>
-      {lede && <p className="max-w-3xl text-[13px] leading-relaxed text-ink-2">{lede}</p>}
+    <section className={`sec space-y-6 ${tone === "rh" ? "sec-rh" : ""}`} data-n={n}>
+      <header className="sec-h">
+        <h2 className="sec-t">{title}</h2>
+        {lede && <div className="sec-l">{lede}</div>}
+      </header>
       {children}
     </section>
     </ToneScope>
+  );
+}
+
+/** how a number is built: one click away instead of a wall of small print */
+export function Method({ title = "How these numbers are built", children }: { title?: string; children: React.ReactNode }) {
+  return (
+    <details className="method">
+      <summary>{title}</summary>
+      <div className="method-b">{children}</div>
+    </details>
   );
 }
 
@@ -172,7 +195,25 @@ export function Note({ children }: { children: React.ReactNode }) {
   return <p className="max-w-4xl text-[11.5px] leading-relaxed text-muted">{children}</p>;
 }
 
-const M = { top: 4, right: 14, left: 0, bottom: 0 };
+/** the series high, ringed and labelled with its date */
+function peakMark(pal: Pal, data: Row[], x: string, y: string, fmt: Fmt) {
+  const ok = data.filter((r) => r[y] != null && isFinite(Number(r[y])));
+  if (ok.length < 3) return null;
+  const pk = ok.reduce((a, b) => (Number(b[y]) > Number(a[y]) ? b : a));
+  if (pk === ok[ok.length - 1]) return null;
+  return <ReferenceDot key="peak" x={pk[x] as string} y={Number(pk[y])} r={3} fill={pal.surface} stroke={pal.ink} strokeWidth={1.5} ifOverflow="visible"
+    label={{ value: `High ${F[fmt](Number(pk[y]))}, ${fmtDayLong(pk[x])}`, position: "right", offset: 8, fill: pal.ink2, fontSize: 11.5, fontFamily: "var(--font-num)" }} />;
+}
+
+/** the latest point, dotted and labelled, so the current value reads without hovering */
+function endMark(pal: Pal, data: Row[], x: string, y: string, fmt: Fmt) {
+  const last = [...data].reverse().find((r) => r[y] != null && isFinite(Number(r[y])));
+  if (!last) return null;
+  return <ReferenceDot key="end" x={last[x] as string} y={Number(last[y])} r={3.5} fill={pal.series[0]} stroke={pal.surface} strokeWidth={2} ifOverflow="visible"
+    label={{ value: F[fmt](Number(last[y])), position: "left", offset: 10, fill: pal.ink, fontSize: 12, fontWeight: 600, fontFamily: "var(--font-num)" }} />;
+}
+
+const M = { top: 8, right: 0, left: 0, bottom: 0 };
 /** past this many x points, bars get thinner than their gap; stacks switch to stacked areas */
 const DENSE = 60;
 
@@ -197,7 +238,7 @@ export function StackedAreas({ data, x, ys, fmt = "usd" }: { data: Row[]; x: str
 /** one bar per category; `highlight` keys get their entity color, the rest stay neutral */
 export function CategoryBars({ data, x, y, fmt = "usd", highlight = [] }: { data: Row[]; x: string; y: string; fmt?: Fmt; highlight?: string[] }) {
   const pal = usePalette();
-  const tick = { fill: pal.axis, fontSize: 10.5, fontFamily: "var(--font-geist-mono)" };
+  const tick = { fill: pal.axis, fontSize: 11, fontFamily: "var(--font-num)" };
   return (
     <ResponsiveContainer>
       <BarChart data={data} margin={M}>
@@ -281,6 +322,7 @@ export function SimpleArea({ data, x, y, fmt = "usd" }: { data: Row[]; x: string
     <ResponsiveContainer>
       <AreaChart data={data} margin={M}>
         {chrome(pal, fmt, x, false)}
+        {endMark(pal, data, x, y, fmt)}
         <Area dataKey={y} stroke={pal.series[0]} strokeWidth={2} fill={pal.series[0]} fillOpacity={0.1} isAnimationActive={false} />
       </AreaChart>
     </ResponsiveContainer>
@@ -288,14 +330,16 @@ export function SimpleArea({ data, x, y, fmt = "usd" }: { data: Row[]; x: string
 }
 
 /** One series renders as a line over a faint wash; several render as plain lines with a legend. */
-export function SimpleLine({ data, x, ys, fmt = "pct" }: { data: Row[]; x: string; ys: string[]; fmt?: Fmt }) {
+export function SimpleLine({ data, x, ys, fmt = "pct", peak }: { data: Row[]; x: string; ys: string[]; fmt?: Fmt; peak?: boolean }) {
   const pal = usePalette();
   if (ys.length === 1) {
     return (
       <ResponsiveContainer>
         <AreaChart data={data} margin={M}>
           {chrome(pal, fmt, x, false)}
-          <Area dataKey={ys[0]} stroke={pal.series[0]} strokeWidth={2} fill={pal.series[0]} fillOpacity={0.08} dot={false}
+          {peak && peakMark(pal, data, x, ys[0], fmt)}
+          {endMark(pal, data, x, ys[0], fmt)}
+          <Area dataKey={ys[0]} stroke={pal.series[0]} strokeWidth={2} fill={pal.series[0]} fillOpacity={0.06} dot={false}
             activeDot={{ r: 4, stroke: pal.surface, strokeWidth: 2 }} isAnimationActive={false} />
         </AreaChart>
       </ResponsiveContainer>
@@ -346,12 +390,12 @@ export function Table({ rows, cols }: { rows: Row[]; cols: { key: string; title:
   return (
     <div className="overflow-x-auto">
       <table className="w-full text-[12px]">
-        <thead><tr className="border-b border-line-strong text-muted">
-          {cols.map((c) => <th key={c.key} className={`py-1.5 pr-4 font-mono text-[10.5px] font-normal uppercase tracking-wider ${numeric(c.fmt) ? "text-right" : "text-left"}`}>{c.title}</th>)}
+        <thead><tr className="border-b border-ink text-muted">
+          {cols.map((c) => <th key={c.key} className={`py-1.5 pr-4 text-[11.5px] font-medium ${numeric(c.fmt) ? "text-right" : "text-left"}`}>{c.title}</th>)}
         </tr></thead>
         <tbody>{rows.map((r, i) => (
           <tr key={i} className="border-t border-line hover:bg-wash">
-            {cols.map((c, j) => <td key={c.key} className={`whitespace-nowrap py-1.5 pr-4 font-mono tabular-nums ${numeric(c.fmt) ? "text-right" : "text-left"} ${j === 0 ? "text-ink" : "text-ink-2"}`}>{f(r[c.key], c.fmt)}</td>)}
+            {cols.map((c, j) => <td key={c.key} className={`num whitespace-nowrap py-1.5 pr-4 tabular-nums ${numeric(c.fmt) ? "text-right" : "text-left"} ${j === 0 ? "text-ink" : "text-ink-2"}`}>{f(r[c.key], c.fmt)}</td>)}
           </tr>
         ))}</tbody>
       </table>
@@ -360,15 +404,17 @@ export function Table({ rows, cols }: { rows: Row[]; cols: { key: string; title:
 }
 
 /** Stacked bars with horizontal threshold lines (e.g. MIP-021 buyback tiers at $1.5M / $2M). */
-export function StackedBarsWithLines({ data, x, ys, lines, fmt = "usd" }: { data: Row[]; x: string; ys: string[]; lines: { y: number; label: string }[]; fmt?: Fmt }) {
+export function StackedBarsWithLines({ data, x, ys, lines, bands = [], fmt = "usd" }: { data: Row[]; x: string; ys: string[]; lines: { y: number; label: string }[]; bands?: { from: number; to?: number; label: string }[]; fmt?: Fmt }) {
   const pal = usePalette();
   return (
     <ResponsiveContainer>
       <BarChart data={data} margin={M}>
         {chrome(pal, fmt, x, true)}
+        {bands.map((b, i) => <ReferenceArea key={b.label} y1={b.from} y2={b.to} ifOverflow="extendDomain" fill={pal.series[0]} fillOpacity={0.07 + i * 0.06} stroke={pal.ref} strokeDasharray="3 3" strokeOpacity={0.6}
+          label={{ value: b.label, position: "insideTopLeft", fill: pal.ink2, fontSize: 11, fontFamily: "var(--font-num)", offset: 6 }} />)}
         {bars(pal, ys)}
         {lines.map((l) => <ReferenceLine key={l.label} y={l.y} stroke={pal.ref} strokeDasharray="3 3"
-          label={{ value: l.label, fill: pal.axis, fontSize: 10, fontFamily: "var(--font-geist-mono)", position: "insideTopLeft" }} />)}
+          label={{ value: l.label, fill: pal.axis, fontSize: 10, fontFamily: "var(--font-num)", position: "insideTopLeft" }} />)}
       </BarChart>
     </ResponsiveContainer>
   );
