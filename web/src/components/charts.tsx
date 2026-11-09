@@ -87,7 +87,7 @@ const LABELS: Record<string, string> = {
 export const label = (k: string) => LABELS[k] ?? k.replace(/_usd$/, "").replace(/_/g, " ");
 
 export type Fmt = "usd" | "pct" | "rate" | "raw" | "mult" | "int";
-const F: Record<Fmt, (v: number) => string> = { usd: fmtUsd, pct: fmtPct, rate: (v) => v.toFixed(4), raw: (v) => v.toLocaleString(), mult: (v) => `${v.toFixed(1)}x`, int: (v) => v.toLocaleString(undefined, { maximumFractionDigits: 0 }) };
+const F: Record<Fmt, (v: number) => string> = { usd: fmtUsd, pct: fmtPct, rate: (v) => v.toFixed(4), raw: (v) => (Math.abs(v) >= 1e5 ? compact(v) : v.toLocaleString(undefined, { maximumFractionDigits: 2 })), mult: (v) => `${v.toFixed(1)}x`, int: (v) => v.toLocaleString(undefined, { maximumFractionDigits: 0 }) };
 // axis ticks stay short: counts compact to 7.2M / 30K, everything else uses the normal formatter
 const compact = (v: number) => (Math.abs(v) >= 1e6 ? `${+(v / 1e6).toFixed(1)}M` : Math.abs(v) >= 1e3 ? `${+(v / 1e3).toFixed(1)}K` : v.toLocaleString());
 const AX: Record<Fmt, (v: number) => string> = { ...F, raw: compact, int: compact };

@@ -108,9 +108,9 @@ export default function Model({ inp }: { inp: ModelInputs }) {
       {/* headline: the 2030 price, set as big as the page allows */}
       <div className="grid items-end gap-x-10 gap-y-6 md:grid-cols-[minmax(0,5fr)_minmax(0,7fr)]">
         <div>
-          <div className="text-[15px] font-semibold tracking-tight text-ink">SYRUP in 2030 <span className="font-normal text-muted">on these settings</span></div>
-          <div className="mt-3 text-[clamp(72px,11vw,136px)] font-extrabold leading-[0.85] tracking-[-0.055em] text-ink">{px(end.price)}</div>
-          <div className={`mt-3 text-[15px] font-semibold ${mult >= 1 ? "text-up" : "text-down"}`}>{mult.toFixed(1)}× today&apos;s ${inp.price.toFixed(3)}</div>
+          <div className="text-[14px] text-ink-2">SYRUP price in 2030, on these settings</div>
+          <div className="mt-2 text-[40px] font-bold leading-none tracking-[-0.03em] text-ink">{px(end.price)}</div>
+          <div className={`mt-2 text-[14px] font-semibold ${mult >= 1 ? "text-up" : "text-down"}`}>{mult.toFixed(1)}× today&apos;s ${inp.price.toFixed(3)}</div>
         </div>
         <div className="stats grid grid-cols-3">
           {[["Revenue", usd(end.revenue), `vs ${usd(rows[0].revenue)} trailing year`],

@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { usePalette } from "@/components/charts";
 import { SPECS, type ExhibitSpec, type Kind } from "@/lib/exhibits";
 
@@ -65,8 +65,9 @@ function draw(svg: SVGSVGElement, id: string, spec: ExhibitSpec, c: Colors) {
   });
   (spec.lines ?? []).forEach((l) => el("line", { x1: l[0], y1: l[1], x2: l[2], y2: l[3], stroke: c.line, "stroke-width": 1 }, L.dec));
 
-  const labels: { t: string; x: number; y: number; anchor: string }[] = [];
-  spec.edges.forEach((e) => {
+  const labels: { t: string; x: number; y: number; anchor: string; ei: number }[] = [];
+  const hit = (p: number[]) => Object.values(N).find((n) => p[0] >= n.x - 6 && p[0] <= n.x + n.w + 6 && p[1] >= n.y - 6 && p[1] <= n.y + n.h + 6)?.id ?? "";
+  spec.edges.forEach((e, ei) => {
     let d = "", lx = 0, ly = 0, anchor = "start";
     if (e.pts) {
       d = "M" + e.pts.map((p) => p.join(",")).join(" L");
@@ -93,14 +94,15 @@ function draw(svg: SVGSVGElement, id: string, spec: ExhibitSpec, c: Colors) {
       if (e.anchor) anchor = e.anchor;
     }
     const k = e.dash ? "dash" : "solid";
-    el("path", { d, fill: "none", stroke: e.dash ? c.muted : c.ink2, "stroke-width": 1, "stroke-dasharray": e.dash ? "3 3" : "none",
+    const ends = e.pts ? [hit(e.pts[0]), hit(e.pts[e.pts.length - 1])] : [e.from!, e.to!];
+    el("path", { "data-e": ei, "data-a": ends[0], "data-b": ends[1], d, fill: "none", stroke: e.dash ? c.muted : c.ink2, "stroke-width": 1, "stroke-dasharray": e.dash ? "3 3" : "none",
       "stroke-linejoin": "round", "marker-end": `url(#${id}-a-${k})` }, L.edge);
-    if (e.label) labels.push({ t: e.label, x: lx, y: ly, anchor });
+    if (e.label) labels.push({ t: e.label, x: lx, y: ly, anchor, ei });
   });
 
   Object.values(N).forEach((n) => {
     const col = kc(n.kind);
-    const g = el("g", {}, L.node);
+    const g = el("g", { "data-n": n.id, tabindex: 0, role: "button", "aria-label": [n.t, ...(n.sub ?? [])].join(", ") }, L.node);
     const tw = n.w < 160 ? 28 : 36;   // ticker tag width
     el("rect", { x: n.x, y: n.y, width: n.w, height: n.h, rx: 2, fill: c.surface, stroke: c.line, "stroke-width": 1 }, g);
     el("path", { d: `M${n.x + 2},${n.y} H${n.x + tw} V${n.y + n.h} H${n.x + 2} Q${n.x},${n.y + n.h} ${n.x},${n.y + n.h - 2} V${n.y + 2} Q${n.x},${n.y} ${n.x + 2},${n.y} Z`, fill: col }, g);
@@ -113,39 +115,109 @@ function draw(svg: SVGSVGElement, id: string, spec: ExhibitSpec, c: Colors) {
   });
 
   labels.forEach((l) => {
-    const t = el("text", { x: l.x, y: l.y, fill: c.ink2, "font-family": MONO, "font-size": 9.5, "text-anchor": l.anchor, "letter-spacing": ".02em" }, L.lab);
+    const lg = el("g", { "data-l": l.ei }, L.lab);
+    const t = el("text", { x: l.x, y: l.y, fill: c.ink2, "font-family": MONO, "font-size": 9.5, "text-anchor": l.anchor, "letter-spacing": ".02em" }, lg);
     t.textContent = l.t;
-    try { const b = t.getBBox(); L.lab.insertBefore(el("rect", { x: b.x - 4, y: b.y - 2, width: b.width + 8, height: b.height + 4, rx: 2, fill: c.surface, stroke: c.line, "stroke-width": 1 }), t); } catch {}
+    try { const b = t.getBBox(); lg.insertBefore(el("rect", { x: b.x - 4, y: b.y - 2, width: b.width + 8, height: b.height + 4, rx: 2, fill: c.surface, stroke: c.line, "stroke-width": 1 }), t); } catch {}
   });
 }
 
 const HEIGHT: Record<string, number> = { d1: 690, d2: 450, d3: 530, d4: 640, d5: 520, d6: 630 };
+const KEY: [Exclude<Kind, "plain" | "warn">, string][] = [["maple", "Maple"], ["syrup", "SYRUP"], ["rh", "Robinhood"], ["morpho", "Morpho / Steakhouse"], ["infra", "Infrastructure"]];
 
-/** One flow diagram as a card: label, title, one-line lede, the diagram, and a source line. */
-export function Exhibit({ id, n, title, lede, source }: { id: keyof typeof SPECS | string; n: number; title: string; lede?: string; source: string }) {
+export type Fig = { id: keyof typeof SPECS | string; title: string; lede?: string; source: string };
+
+/** Light up one box and everything wired to it; dim the rest. */
+function trace(svg: SVGSVGElement, on: string | null, soft = false) {
+  svg.classList.toggle("is-tracing", !!on && !soft);
+  svg.classList.toggle("is-focus", !!on && soft);
+  const live = new Set<string>();
+  svg.querySelectorAll<SVGPathElement>("[data-e]").forEach((p) => {
+    const hot = !!on && (p.dataset.a === on || p.dataset.b === on);
+    p.classList.toggle("on", hot);
+    if (hot) { live.add(p.dataset.a!); live.add(p.dataset.b!); svg.querySelector(`[data-l="${p.dataset.e}"]`)?.classList.add("on"); }
+    else svg.querySelector(`[data-l="${p.dataset.e}"]`)?.classList.remove("on");
+  });
+  svg.querySelectorAll<SVGGElement>("[data-n]").forEach((g) => { g.classList.toggle("on", live.has(g.dataset.n!) || g.dataset.n === on); g.classList.toggle("is-sel", g.dataset.n === on); });
+}
+
+/** Flow diagrams, one on screen at a time. Click a box to trace what flows in and out of it. */
+export function Diagrams({ figs, focus, onNode }: { figs: Fig[]; focus?: { fig: string; id: string }; onNode?: (fig: string, id: string) => void }) {
   const ref = useRef<SVGSVGElement>(null);
   const pal = usePalette();
   const dark = pal.dark;
+  const [i, setI] = useState(0);
+  const [on, setOn] = useState<string | null>(null);
+  const onRef = useRef<string | null>(null);
+  onRef.current = on;
   useEffect(() => {
-    if (!ref.current) return;
-    const go = () => draw(ref.current!, `ex-${id}`, SPECS[id], {
-      ink: pal.ink, ink2: pal.ink2, muted: pal.axis, surface: pal.surface, line: pal.other, kinds: dark ? KIND.dark : KIND.light,
-    });
+    if (!focus) return;
+    const k = figs.findIndex((x) => x.id === focus.fig);
+    if (k >= 0) setI(k);
+    setOn(null);
+  }, [focus?.fig, focus?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  const f = figs[i];
+  const soft = !on && focus?.fig === f.id ? focus.id : null;
+  const softRef = useRef<string | null>(null);
+  softRef.current = soft;
+  const spec = SPECS[f.id];
+  useEffect(() => {
+    const svg = ref.current;
+    if (!svg) return;
+    const go = () => { draw(svg, `ex-${f.id}`, spec, { ink: pal.ink, ink2: pal.ink2, muted: pal.axis, surface: pal.surface, line: pal.other, kinds: dark ? KIND.dark : KIND.light }); trace(svg, onRef.current ?? softRef.current, !onRef.current); };
     go();
-    document.fonts?.ready.then(go);   // re-measure label boxes once Geist has loaded
-  }, [id, pal, dark]);
+    document.fonts?.ready.then(go);
+    setOn(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [f.id, dark, pal.ink, pal.surface]);
+  // a redraw (fonts loading, theme) keeps whatever box is selected
+  useEffect(() => { if (ref.current) trace(ref.current, on ?? soft, !on); }, [on, soft]);
+  const pickNode = (e: React.SyntheticEvent) => {
+    const g = (e.target as Element).closest("[data-n]") as SVGGElement | null;
+    const id = g?.dataset.n ?? null;
+    setOn((cur) => (!id || cur === id ? null : id));
+    if (id) onNode?.(f.id, id);
+  };
+  const node = spec.nodes.find((n) => n.id === (on ?? soft));
+  const name = (id?: string) => spec.nodes.find((n) => n.id === id)?.t ?? "";
+  const flows = node ? spec.edges.map((e, k) => {
+    const p = ref.current?.querySelector<SVGPathElement>(`[data-e="${k}"]`);
+    const a = p?.dataset.a, b = p?.dataset.b;
+    const at = on ?? soft;
+    if (a !== at && b !== at) return null;
+    return { dir: a === at ? "to" : "from", other: name(a === at ? b : a), label: e.label };
+  }).filter((x) => x && x.other) as { dir: string; other: string; label?: string }[] : [];
+  const kinds = new Set(spec.nodes.map((n) => n.kind));
+
   return (
-    <figure className="fig overflow-hidden">
-      <figcaption className="fig-h">
-        <span className="fig-t"><span className="text-accent-ink">Exhibit {n}.</span> {title}</span>
-        {lede && <span className="fig-s max-w-3xl">{lede}</span>}
+    <figure className="dg">
+      <figcaption className="dg-h">
+        <div className="dg-tabs" role="tablist" aria-label="Diagrams">
+          {figs.map((x, k) => (
+            <button key={x.id} role="tab" aria-selected={k === i} onClick={() => setI(k)}>{x.title}</button>
+          ))}
+        </div>
+        {f.lede && <p className="dg-l">{f.lede}</p>}
       </figcaption>
-      <div className="overflow-x-auto">
-        <svg ref={ref} viewBox={`0 0 760 ${HEIGHT[id]}`} role="img" aria-label={title} className="mx-auto block h-auto max-h-[calc(100svh-150px)] w-full rounded-[2px] bg-surface px-3 pb-1 pt-2" />
+      <div className="dg-body">
+        <svg ref={ref} viewBox={`0 0 760 ${HEIGHT[f.id]}`} role="img" aria-label={f.title} className="dg-svg"
+          onClick={pickNode} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); pickNode(e); } if (e.key === "Escape") setOn(null); }} />
       </div>
-      <div className="flex justify-between gap-4 py-2.5 text-[11.5px] text-muted">
-        <span>Source: {source}</span><span>@ptimfv</span>
+      <div className="dg-detail" aria-live="polite">
+        {node ? (<>
+          <div className="dg-dt">{node.t}{node.sub?.length ? <span>{node.sub.join(". ")}</span> : null}</div>
+          <ul>{flows.map((x, k) => <li key={k}><i>{x.dir === "to" ? "→" : "←"}</i>{x.other}{x.label ? <span>{x.label}</span> : null}</li>)}</ul>
+        </>) : <div className="dg-hint">Select a box to trace what flows in and out of it.</div>}
+      </div>
+      <div className="dg-f">
+        <span className="dg-key">{KEY.filter(([k]) => kinds.has(k)).map(([k, l]) => <span key={k}><i style={{ background: (dark ? KIND.dark : KIND.light)[k] }} />{l}</span>)}</span>
+        <span>Source: {f.source}</span>
       </div>
     </figure>
   );
+}
+
+/** A single diagram. */
+export function Exhibit(f: Fig & { n?: number }) {
+  return <Diagrams figs={[f]} />;
 }

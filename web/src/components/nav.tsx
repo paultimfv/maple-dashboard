@@ -4,9 +4,10 @@ import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 
 const nav = [
-  { href: "/", label: "Business" },
-  { href: "/macro", label: "Macro" },
-  { href: "/model", label: "Model" },
+  { href: "/", label: "Maple" },
+  { href: "/metrics", label: "Key business metrics" },
+  { href: "/syrup", label: "SYRUP" },
+  { href: "/macro", label: "Growth drivers" },
 ];
 
 type Theme = "light" | "dark";
@@ -49,23 +50,20 @@ export default function Nav() {
   const path = usePathname();
   return (
     <nav className="sticky top-0 z-20 border-b border-line bg-page/85 backdrop-blur">
-      <div className="mx-auto flex max-w-6xl items-center gap-6 px-4 text-sm">
-        <a href="/" className="py-3 text-[15px] font-extrabold tracking-[-0.03em] text-ink">
-          Maple<span className="text-accent">.</span>
-        </a>
-        <div className="flex gap-5">
+      <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-x-6 px-4 text-sm">
+        <a href="/" className="shrink-0 py-3 text-[15px] font-bold tracking-[-0.02em] text-ink">Maple Finance</a>
+        <div className="order-last -mt-1 flex w-full gap-5 overflow-x-auto whitespace-nowrap [scrollbar-width:none] sm:order-none sm:mt-0 sm:w-auto">
           {nav.map((n) => {
-            const on = n.href === "/" ? path === "/" : path.startsWith(n.href);
+            const on = n.href === "/" ? path === "/" : path.startsWith(n.href) || (n.href === "/syrup" && path.startsWith("/model"));
             return (
               <Link key={n.href} href={n.href}
-                className={`-mb-px border-b-2 py-3 ${on ? "border-accent text-ink" : "border-transparent text-muted hover:text-ink"}`}>
+                className={`-mb-px border-b-2 py-2.5 sm:py-3 ${on ? "border-accent text-ink" : "border-transparent text-muted hover:text-ink"}`}>
                 {n.label}
               </Link>
             );
           })}
         </div>
-        <a href="https://robinhood-earn.vercel.app" className="ml-auto hidden text-[12px] text-muted hover:text-ink sm:inline">Robinhood Chain × Earn ↗</a>
-        <div className="ml-auto sm:ml-0"><ThemeToggle /></div>
+        <div className="ml-auto shrink-0"><ThemeToggle /></div>
       </div>
     </nav>
   );
