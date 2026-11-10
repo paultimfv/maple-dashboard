@@ -57,7 +57,6 @@ export default async function Home() {
         <section className="blk">
           <header className="hero">
             <h1 className="hero-t">Maple Finance</h1>
-            <p className="hero-l">Maple lends stablecoins to institutions and shares its revenue with SYRUP holders through buybacks.</p>
             <p className="hero-s"><span className="live">Data to <b>{asOf}</b></span><span>Ethereum, Robinhood Chain, Maple, CoinGecko</span><span>Updated daily</span></p>
           </header>
           <Explorer label="Highlights" metrics={glance} />
@@ -77,7 +76,7 @@ export default async function Home() {
 
         <section className="blk">
           <h2 className="blk-t">How revenue reaches SYRUP</h2>
-          <Diagrams figs={[{ id: "d6", title: "Revenue to buybacks", lede: "Four sources add up to one monthly number. MIP-021 sends a tiered share of it to SYRUP buybacks.", source: "maple.finance/transparency; onchain fees and buyback wallet (Ethereum)" }]} />
+          <Diagrams figs={[{ id: "d6", title: "Revenue to buybacks", source: "maple.finance/transparency; onchain fees and buyback wallet (Ethereum)" }]} />
         </section>
       </main>
     </div>
