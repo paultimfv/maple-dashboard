@@ -93,7 +93,6 @@ export default async function BusinessPage() {
   const poolTop = poolNow.reduce<R | undefined>((a, b) => (!a || n(b.aum_usd) > n(a.aum_usd) ? b : a), undefined);
   const poolTot = poolNow.reduce((t, x) => t + n(x.aum_usd), 0);
   const loansG = yearAgo(loansHist, "month", "loans_total");
-  const yld = [...model].reverse().find((x) => x.revenue_yield_on_aum != null);
   const yldAvg = col(model, "revenue_yield_on_aum").reduce((a, b) => a + b, 0) / Math.max(1, col(model, "revenue_yield_on_aum").length);
   const intAll = interest.reduce((t, x) => t + n(x.interest_to_depositors_usd) + n(x.delegate_fee_usd) + n(x.maple_fee_usd), 0);
   const intLend = interest.reduce((t, x) => t + n(x.interest_to_depositors_usd), 0);
@@ -106,12 +105,16 @@ export default async function BusinessPage() {
 
   const asOf = String(ar?.day ?? "").slice(0, 10);
   const asOfLong = asOf ? `${Number(asOf.slice(8, 10))} ${mon(asOf).slice(0, 3)} ${asOf.slice(0, 4)}` : "";
+  const take = ledger.filter((x) => !x.partial_month && x.loans_total && x.onchain_revenue != null && String(x.month) >= "2024-07-01")
+    .map((x) => ({ month: x.month, take_rate: (n(x.onchain_revenue) * 12) / n(x.loans_total),
+      share_of_interest: x.gross_interest ? (n(x.gross_interest) - n(x.interest_to_lenders)) / n(x.gross_interest) : null }));
+  const tk = last(take);
   const revenue: Metric[] = [
     { id: "by-month", node: { fig: "d6", id: "rev" }, label: `Revenue, ${monY(r?.month)}`, value: fmtUsd(n(r?.total_revenue)),
       note: "By source. Shading shows the share that goes to SYRUP buybacks: 10% under $1.5M, 20% up to $2M, 30% above.",
       chart: { kind: "tiers", data: rev, x: "month", ys: ["syrup_revenue", "pool_revenue", "offchain_revenue"], bands: [{ from: 1_500_000, to: 2_000_000, label: "20% to buybacks" }, { from: 2_000_000, to: 2_800_000, label: "30% to buybacks" }] } },
-    { id: "yield", node: { fig: "d6", id: "rev" }, label: "Revenue as a share of assets", value: fmtPct(n(yld?.revenue_yield_on_aum)),
-      note: "Monthly revenue × 12 ÷ assets under management.", chart: { kind: "line", data: model.filter((x) => x.revenue_yield_on_aum != null), x: "month", ys: ["revenue_yield_on_aum"] } },
+    { id: "take", node: { fig: "d6", id: "rev" }, label: "Take rate", value: fmtPct(n(tk?.take_rate)),
+      note: "Maple's cut of the interest on its loans: onchain fees × 12 ÷ loans outstanding at month end.", chart: { kind: "line", data: take, x: "month", ys: ["take_rate"] } },
     { id: "interest", node: { fig: "d6", id: "s1" }, label: `Interest paid, ${monY(bw?.month)}`, value: fmtUsd(n(bw?.interest_paid_usd)), change: iyoy,
       note: "Interest borrowers paid on open-term loans. Change compares the last 12 months with the 12 before.", chart: { kind: "bars", data: borrowers, x: "month", ys: ["interest_paid_usd"] } },
   ];
