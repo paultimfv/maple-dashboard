@@ -6,7 +6,15 @@ export type Period = "year" | "quarter" | "month";
 type Row = Record<string, number | string | boolean | null>;
 
 export async function modelLedger(): Promise<Row[]> {
-  const rows = await q(`SELECT l.*, r.otc_published FROM model_ledger l LEFT JOIN monthly_revenue r USING (month) WHERE l.month >= '2023-01-01' ORDER BY l.month`);
+  const rows = await q(`SELECT l.*, r.otc_published, m.onchain_loans, m.yb_supply, m.yb_syrup
+    FROM model_ledger l LEFT JOIN monthly_revenue r USING (month)
+    LEFT JOIN LATERAL (   -- market denominators at the last reading in the month (DefiLlama weekly, CoinGecko daily)
+      SELECT (SELECT sum(borrowed_usd) FROM llama_lending WHERE day = (SELECT max(day) FROM llama_lending WHERE day < l.month + interval '1 month' AND day >= l.month))
+               + CASE WHEN EXISTS (SELECT 1 FROM llama_lending WHERE protocol ILIKE '%maple%') THEN 0 ELSE coalesce(l.loans_total, 0) END AS onchain_loans,
+             (SELECT sum(mcap_usd) FROM cg_yield_bearing WHERE day = (SELECT max(day) FROM cg_yield_bearing WHERE day < l.month + interval '1 month' AND day >= l.month)) AS yb_supply,
+             (SELECT sum(mcap_usd) FROM cg_yield_bearing WHERE coin IN ('syrupusdc', 'syrupusdt', 'syrup-usdg')
+                AND day = (SELECT max(day) FROM cg_yield_bearing WHERE day < l.month + interval '1 month' AND day >= l.month)) AS yb_syrup) m ON true
+    WHERE l.month >= '2023-01-01' ORDER BY l.month`);
   return rows.map((r) => Object.fromEntries(Object.entries(r).map(([k, v]) => [k,
     v instanceof Date ? v.toISOString().slice(0, 10)
     : typeof v === "string" && /^-?\d+(\.\d+)?$/.test(v) ? Number(v) : (v as Row[string])])));
@@ -67,6 +75,14 @@ export const METRICS: Metric[] = [
   { section: "CONSERVATIVE", label: "Total Revenue, conservative (onchain + confirmed OTC)", key: "revenue_conservative", fmt: "usd" },
   { section: "CONSERVATIVE", label: "P/S Multiple, conservative (FDV/Revenue)", key: "ps_conservative", fmt: "mult" },
 ];
+// Market share, the two lines the SYRUP model's BALANCES section uses (also appended, so existing rows stay put).
+METRICS.push(
+  { section: "MARKET SHARE", label: "Yield-bearing stablecoins (Top 15, CoinGecko)", key: "yb_supply", fmt: "usd" },
+  { section: "MARKET SHARE", label: "SyrupUSD supply (syrupUSDC + USDT + USDG)", key: "yb_syrup", fmt: "usd" },
+  { section: "MARKET SHARE", label: "Maple share of yield-bearing (syrupUSD / top 15)", key: "share_yb", fmt: "pct" },
+  { section: "MARKET SHARE", label: "Onchain Active Loans (top 25 lending, DefiLlama, + Maple)", key: "onchain_loans", fmt: "usd" },
+  { section: "MARKET SHARE", label: "Share of onchain active loans (loan book / active loans)", key: "share_loans", fmt: "pct" },
+);
 const OTC_CONFIRMED_THROUGH = "2025-09-30";
 
 /** Roll monthly ledger rows up to periods. Flows: sums of complete months. Stocks: last value in the period. */
@@ -109,6 +125,8 @@ export function aggregate(ledger: Row[], period: Period, from = "2024-01-01") {
         buybacks_actual: months ? sum(done, "buybacks_actual") : null, buybacks_implied: months ? sum(done, "buybacks_implied") : null,
         syrup_fdv: fdv, syrup_mcap: lastOf(g, "syrup_mcap"), ps_fdv: div(fdv, annualised), syrup_price: lastOf(g, "syrup_price"),
         onchain_revenue: onchain, otc_confirmed: otcConfirmed, offchain_unconfirmed: offUnconfirmed, revenue_conservative: conservative,
+        yb_supply: lastOf(g, "yb_supply"), yb_syrup: lastOf(g, "yb_syrup"), onchain_loans: lastOf(g, "onchain_loans"),
+        share_yb: div(lastOf(g, "yb_syrup"), lastOf(g, "yb_supply")), share_loans: div(lastOf(g, "deposits_total"), lastOf(g, "onchain_loans")),
         ps_conservative: div(fdv, conservative != null && months ? (conservative * 12) / months : null),
       },
     });

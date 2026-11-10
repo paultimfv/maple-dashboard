@@ -49,7 +49,8 @@ export default async function DriversPage() {
   const stableAt = new Map(stable.map((r) => [day(r), n(r.supply_usd)]));
   const ybOfStable = cgT.filter((t) => stableAt.has(String(t.day))).map((t) => ({ day: t.day, yield_bearing_share: n(t.mcap_usd) / stableAt.get(String(t.day))! }));
   const llamaHasMaple = llama.some((r) => /maple/i.test(String(r.protocol)));
-  const mapleOfAll = allBor.map((t) => { const m = n(bookAt(String(t.day))?.loans); return { day: t.day, maple_share: m / ((n(t.borrowed_usd) + (llamaHasMaple ? 0 : m)) || 1) }; });
+  /* Maple's loan book (deposits) ÷ active onchain loans (top-25 lending protocols, plus Maple's loans when DefiLlama doesn't list Maple) */
+  const mapleOfAll = allBor.map((t) => { const b = bookAt(String(t.day)); return { day: t.day, maple_share: n(b?.deposits) / ((n(t.borrowed_usd) + (llamaHasMaple ? 0 : n(b?.loans))) || 1) }; });
   const utilRows = [...new Set(eth.map(day))].map((d) => {
     const o: R = { day: d };
     for (const r of eth.filter((x) => day(x) === d && x.name !== "Maple")) o[String(r.name)] = n(r.borrowed) / (n(r.supplied) || 1);
@@ -75,7 +76,7 @@ export default async function DriversPage() {
     { id: "loans", label: "Active onchain loans, all chains", value: fmtUsd(n(last(allBor)?.borrowed_usd)), change: yoy(allBor, "borrowed_usd"),
       note: "Borrowed from the 25 largest lending protocols, by protocol, weekly, from DefiLlama.", chart: { kind: "columns", data: topN(llama, "protocol", "borrowed_usd", 6), x: "day", y: "borrowed_usd", group: "group" } },
     { id: "maple-loans-share", label: "Maple's share of active onchain loans", value: fmtPct(n(last(mapleOfAll)?.maple_share)),
-      note: "Maple's loans outstanding ÷ all loans at the 25 largest lending protocols (DefiLlama) plus Maple, weekly.", chart: { kind: "line", data: mapleOfAll, x: "day", ys: ["maple_share"] } },
+      note: "Maple's loan book (total deposits) ÷ all active loans at the 25 largest lending protocols (DefiLlama) plus Maple, weekly. The share the SYRUP model uses.", chart: { kind: "line", data: mapleOfAll, x: "day", ys: ["maple_share"] } },
     { id: "utilization", label: "Utilization, Maple vs Aave, Spark, Compound", value: fmtPct(n(ul.Maple)),
       note: `Share of deposits lent out, weekly. Maple from its pools; Aave, Spark and Compound for their USDC, USDT and DAI markets on Ethereum, from their contracts. Today: Aave ${fmtPct(n(ul.Aave))}, Spark ${fmtPct(n(ul.Spark))}, Compound ${fmtPct(n(ul.Compound))}.`,
       chart: { kind: "line", data: utilRows, x: "day", ys: ["Maple", "Aave", "Spark", "Compound"] } },
