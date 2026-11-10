@@ -45,7 +45,7 @@ export const METRICS: Metric[] = [
   { section: "REVENUE", label: "Pool Revenue", key: "pool_revenue", fmt: "usd" },
   { section: "REVENUE", label: "Offchain Revenue", key: "offchain_revenue", fmt: "usd" },
   { section: "REVENUE", label: "Total Revenue", key: "total_revenue", fmt: "usd" },
-  { section: "REVENUE", label: "Take rate on Loan book", key: "take_rate", fmt: "pct" },
+  { section: "REVENUE", label: "Take rate on Loan book (onchain fees ÷ loans)", key: "take_rate", fmt: "pct" },
   { section: "REVENUE", label: "Gross interest (onchain, open-term)", key: "gross_interest", fmt: "usd" },
   { section: "REVENUE", label: "Interest paid to lenders (onchain)", key: "interest_to_lenders", fmt: "usd" },
   { section: "REVENUE", label: "Maple share of interest (onchain fees / gross)", key: "maple_share_of_interest", fmt: "pct" },
@@ -101,7 +101,7 @@ export function aggregate(ledger: Row[], period: Period, from = "2024-01-01") {
         deposits_syrupusdg: lastOf(g, "deposits_syrupusdg"), loans_syrupusdg: lastOf(g, "loans_syrupusdg"),
         deposits_other: lastOf(g, "deposits_other"), loans_other: lastOf(g, "loans_other"),
         syrup_revenue: syrup, pool_revenue: pools, offchain_revenue: residual != null && residual >= 0 ? residual : null, total_revenue: total,
-        take_rate: div(annualised, avg(done, "loans_total")), months,
+        take_rate: onchain != null && months ? div((onchain * 12) / months, avg(done, "loans_total")) : null, months,   // Maple's cut of loan interest: onchain fees ÷ loans
         gross_interest: months ? sum(done, "gross_interest") : null, interest_to_lenders: months ? sum(done, "interest_to_lenders") : null,
         maple_share_of_interest: months ? div(sum(done, "gross_interest") - sum(done, "interest_to_lenders"), sum(done, "gross_interest")) : null,
         nim: div(annualised, avg(done, "pool_assets")),
