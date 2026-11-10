@@ -63,7 +63,7 @@ export default async function Home() {
         </section>
 
         <section className="blk">
-          <h2 className="blk-t">Across the site</h2>
+          <h2 className="blk-t">Highlights</h2>
           <div className="minis">
             <Mini href="/metrics#by-month" where="Key business metrics" label={`Revenue, ${monY(r?.month)}`} value={fmtUsd(n(r?.total_revenue))} data={rev} x="month" y="total_revenue" kind="bars" />
             <Mini href="/syrup#buybacks" where="SYRUP" label={`Buybacks, ${monY(bb?.month)}`} value={fmtUsd(n(bb?.amount_usd))} data={buybacks} x="month" y="amount_usd" kind="bars" />
