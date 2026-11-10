@@ -14,6 +14,12 @@ export async function GET() {
     Q.syrupPrice(), Q.syrupBuybacks(), Q.earnShare(), Q.utilization(), Q.interestWeekly(), Q.loansWeekly(), Q.poolState(), Q.topLoans(),
     Q.revenueBridge(), Q.stablecoinSupplyGlobal(), Q.earnAllocation(), Q.modelInputs(),
   ]);
+  const [pools, lyield, cover, flows, book, holders, staked, tre] = await Promise.all([
+    Q.poolTable(), Q.lenderYield(), Q.collateralCover(), Q.lenderFlows(), Q.loanBook(), Q.syrupHolders(), Q.syrupStaked(), Q.treasuryDaily(),
+  ]);
+  /* take rate = Maple's cut of the interest on its loans: onchain fees x 12 / loans outstanding at month end */
+  const take = ledger.filter((x) => !x.partial_month && x.loans_total && x.onchain_revenue != null)
+    .map((x) => ({ month: x.month, onchain_revenue: x.onchain_revenue, loans_total: x.loans_total, take_rate: (Number(x.onchain_revenue) * 12) / Number(x.loans_total) }));
 
   return contextResponse([
     `# Maple Finance dashboard (maple.paultimofeev.com)
@@ -35,6 +41,15 @@ Definitions: revenue = syrupUSD (syrupUSDC/USDT/USDG loan managers + strategies)
     table("Lenders per month", lenders),
     table("Borrowers per month", borrowers),
     table("syrupUSDG share of Robinhood Earn", share, { max: 80 }),
+    table("Take rate by month: Maple's cut of the interest on its loans = onchain fees x 12 / loans outstanding at month end", take),
+    table("Pools today: deposits, 30-day change, loans, utilization (lent out), lender yield (30-day share-price growth, annualised), borrower rate (size-weighted, open loans), open loans, collateral cover", pools),
+    table("Lender yield by pool, 30-day annualised", lyield, { max: 200 }),
+    table("Collateral cover by pool (collateral / loans), daily, Maple API", cover, { max: 120 }),
+    table("Lender flows into the syrup pools by month: deposits, withdrawals (negative), net", flows),
+    table("Open loans today, read from each loan contract: borrower, pool, asset, principal, rate, date funded", book, { max: 100 }),
+    table("SYRUP staked in stSYRUP, daily", staked),
+    table("Top 50 holders of SYRUP, syrupUSDC, syrupUSDT on Ethereum today, with public name and type", holders, { max: 160 }),
+    table("Maple treasury, daily: SYRUP and liquid assets (USD)", tre),
     table("syrupUSDG pool state (AUM, exchange rate)", pool, { max: 80 }),
     table("syrupUSDG utilization and loans outstanding", util, { max: 80 }),
     table("syrupUSDG interest, weekly", interest, { max: 80 }),

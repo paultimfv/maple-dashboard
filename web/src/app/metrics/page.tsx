@@ -1,4 +1,4 @@
-import { rhAum, earnAllocation, earnShare, interestWeekly, loansWeekly, shareOfUsdg, poolState, utilization, topLoans, syrupPrice, syrupBuybacks, revenueBridge, capitalOnChain, holders, mapleRevenueMonthly, mapleModelMonthly, mapleAumByPool, mapleAumLatest, syrupSupply, mapleAumReported, poolsSnapshot, mapleLenders, mapleBorrowers, ssfDaily, mapleBalanceSheet, mapleKpis } from "@/lib/queries";
+import { rhAum, earnAllocation, earnShare, interestWeekly, loansWeekly, shareOfUsdg, poolState, utilization, topLoans, syrupPrice, syrupBuybacks, revenueBridge, capitalOnChain, holders, mapleRevenueMonthly, mapleModelMonthly, mapleAumByPool, mapleAumLatest, syrupSupply, mapleAumReported, poolsSnapshot, mapleLenders, mapleBorrowers, ssfDaily, mapleBalanceSheet, mapleKpis, poolTable, lenderYield, collateralCover, lenderFlows, loanBook, syrupHolders, treasuryDaily } from "@/lib/queries";
 import { Panel, Table } from "@/components/charts";
 import { Explorer, Linked, Rail, type Metric } from "@/components/explorer";
 import { fmtUsd, fmtPct } from "@/lib/fmt";
@@ -19,6 +19,29 @@ export default async function BusinessPage() {
   const ar = last(aumRep);
   const [lenders, borrowers, ssf, bsheet, kpi] = await Promise.all([mapleLenders(), mapleBorrowers(), ssfDaily(), mapleBalanceSheet(), mapleKpis()]);
   const mk = kpi[0];
+  const [pools, ly, cover, flows, book, tokenHolders, tre] = await Promise.all([poolTable(), lenderYield(), collateralCover(), lenderFlows(), loanBook(), syrupHolders(), treasuryDaily()]);
+  const POOLS = ["syrupUSDC", "syrupUSDT", "syrupUSDG"];
+  /* long rows (day, pool, value) to one row per day with a column per pool */
+  const wide = (rows: Record<string, unknown>[], k: string) => {
+    const m = new Map<string, Record<string, unknown>>();
+    for (const r of rows) { const d = String(r.day).slice(0, 10); const o = m.get(d) ?? { day: d }; o[String(r.pool)] = r[k]; m.set(d, o); }
+    return [...m.values()];
+  };
+  const yieldW = wide(ly, "yield"), coverW = wide(cover, "coverage");
+  const bookUsd = book.filter((x) => x.asset !== "WETH");
+  const bookTot = bookUsd.reduce((s, x) => s + n(x.principal), 0);
+  const bookRate = bookUsd.reduce((s, x) => s + n(x.principal) * n(x.rate), 0) / (bookTot || 1);
+  const syrupPoolsCover = (() => { const t = cover.filter((x) => String(x.day) === String(last(cover)?.day)); const c = t.reduce((s, x) => s + n(x.collateral_usd), 0), l = t.reduce((s, x) => s + n(x.collateral_usd) / (n(x.coverage) || 1), 0); return l ? c / l : 0; })();
+  const kinds = (token: string) => {
+    const m = new Map<string, number>();
+    for (const h of tokenHolders.filter((x) => x.token === token)) m.set(String(h.kind), (m.get(String(h.kind)) ?? 0) + n(h.balance));
+    const tot = [...m.values()].reduce((a, b) => a + b, 0);
+    return [...m.entries()].sort((a, b) => b[1] - a[1]).map(([kind, balance]) => ({ kind, balance, share: balance / tot }));
+  };
+  const usdcAt = kinds("syrupUSDC"), usdtAt = kinds("syrupUSDT");
+  const quarters = aggregate(ledger, "quarter", "2025-01-01").map((p) => ({ quarter: p.period, ...p.values,
+    kept: p.values.gross_interest != null && p.values.interest_to_lenders != null ? Number(p.values.gross_interest) - Number(p.values.interest_to_lenders) : null }));
+  const tl = last(tre);
   const ttmL = ledger.filter((x) => !x.partial_month && x.total_revenue != null).slice(-12);
   const ttmGross = ttmL.reduce((s, x) => s + n(x.gross_interest), 0), ttmRev = ttmL.reduce((s, x) => s + n(x.total_revenue), 0);
   const ttmAssets = ttmL.reduce((s, x) => s + n(x.pool_assets), 0) / (ttmL.length || 1);
@@ -110,6 +133,8 @@ export default async function BusinessPage() {
       share_of_interest: x.gross_interest ? (n(x.gross_interest) - n(x.interest_to_lenders)) / n(x.gross_interest) : null }));
   const tk = last(take);
   const revenue: Metric[] = [
+    { id: "treasury", node: { fig: "d6", id: "rev" }, label: "Maple treasury", value: fmtUsd(n(tl?.syrup_usd) + n(tl?.liquid_assets_usd)),
+      note: "Maple's own balance: SYRUP and cash (stablecoins and ETH), daily.", chart: { kind: "bars", data: tre, x: "day", ys: ["liquid_assets_usd", "syrup_usd"] } },
     { id: "by-month", node: { fig: "d6", id: "rev" }, label: `Revenue, ${monY(r?.month)}`, value: fmtUsd(n(r?.total_revenue)),
       note: "By source. Shading shows the share that goes to SYRUP buybacks: 10% under $1.5M, 20% up to $2M, 30% above.",
       chart: { kind: "tiers", data: rev, x: "month", ys: ["syrup_revenue", "pool_revenue", "offchain_revenue"], bands: [{ from: 1_500_000, to: 2_000_000, label: "20% to buybacks" }, { from: 2_000_000, to: 2_800_000, label: "30% to buybacks" }] } },
@@ -119,6 +144,14 @@ export default async function BusinessPage() {
       note: "Interest borrowers paid on open-term loans. Change compares the last 12 months with the 12 before.", chart: { kind: "bars", data: borrowers, x: "month", ys: ["interest_paid_usd"] } },
   ];
   const lending: Metric[] = [
+    { id: "lender-yield", node: { fig: "d4", id: "p" }, label: "Lender yield, syrupUSDC", value: fmtPct(n(pools.find((x) => x.pool === "syrupUSDC")?.lender_yield)),
+      note: "What lenders earn: each pool token's share-price growth over the last 30 days, annualised.", chart: { kind: "line", data: yieldW, x: "day", ys: POOLS } },
+    { id: "borrow-rate", node: { fig: "d4", id: "ln" }, label: "Borrower rate, open loans", value: fmtPct(bookRate),
+      note: `What borrowers pay today: each open loan's contract rate, weighted by size. ${book.length} open loans.`, chart: { kind: "bars", data: pools.filter((x) => x.borrow_rate != null).map((x) => ({ pool: x.pool, borrow_rate: x.borrow_rate, lender_yield: x.lender_yield })), x: "pool", ys: ["borrow_rate", "lender_yield"], fmt: "pct" } },
+    { id: "cover", node: { fig: "d4", id: "ln" }, label: "Collateral cover", value: `${(syrupPoolsCover * 100).toFixed(0)}%`,
+      note: "Borrower collateral ÷ loans in the syrup pools, daily, from Maple's API.", chart: { kind: "line", data: coverW, x: "day", ys: POOLS, fmt: "pct" } },
+    { id: "flows", node: { fig: "d4", id: "p" }, label: `Lender net flow, ${monY(last(flows)?.month)}`, value: fmtUsd(n(last(flows)?.net)),
+      note: "Deposits into the syrup pools against withdrawals out, by month (pool Deposit and Withdraw events).", chart: { kind: "bars", data: flows, x: "month", ys: ["deposited", "withdrawn"] } },
     { id: "aum-split", node: { fig: "d4", id: "p" }, label: "Lender deposits", value: fmtUsd(n(ar?.deposits_usd)),
       note: "Assets under management split into lender deposits and borrower collateral.", chart: { kind: "bars", data: aumRep, x: "day", ys: ["deposits_usd", "collateral_usd"] } },
     { id: "by-pool", node: { fig: "d4", id: "p" }, label: "Deposits by pool", value: fmtUsd(poolTot),
@@ -152,7 +185,7 @@ export default async function BusinessPage() {
   ];
   const sections = [
     { id: "revenue-sec", label: "Revenue" }, { id: "lending-sec", label: "Lending" },
-    { id: "people-sec", label: "Lenders and borrowers" }, { id: "robinhood-sec", label: "Robinhood" }, { id: "data", label: "Data and method" },
+    { id: "pools-sec", label: "Pools and loans" }, { id: "people-sec", label: "Lenders and borrowers" }, { id: "robinhood-sec", label: "Robinhood" }, { id: "data", label: "Data and method" },
   ];
 
   return (
@@ -180,6 +213,35 @@ export default async function BusinessPage() {
           <Linked label="Lending" metrics={lending} figs={[{ id: "d4", title: "How a Maple pool is built", lede: "Every pool repeats the same set of contracts. Fees go to the treasury and the pool delegate inside each loan payment.", source: "Maple docs, smart contract architecture; Maple address registry" }]} />
         </section>
 
+        <section id="pools-sec" className="blk">
+          <h2 className="blk-t">Pools and loans</h2>
+          <Panel title="Pools" sub="Deposits and lender yield from the pool contracts; loans from the loan managers; borrower rate from each open loan; cover from Maple's API.">
+            <Table rows={pools} cols={[
+              { key: "pool", title: "pool" }, { key: "deposits", title: "deposits", fmt: "usd" }, { key: "deposits_30d", title: "30d", fmt: "pct" },
+              { key: "loans", title: "loans", fmt: "usd" }, { key: "loans_30d", title: "30d", fmt: "pct" }, { key: "utilization", title: "lent out", fmt: "pct" },
+              { key: "lender_yield", title: "lender yield", fmt: "pct" }, { key: "borrow_rate", title: "borrower rate", fmt: "pct" },
+              { key: "loans_open", title: "open loans", fmt: "raw" }, { key: "coverage", title: "collateral cover", fmt: "pct" },
+            ]} />
+          </Panel>
+          <dl className="facts">
+            <div><dt>Open loans</dt><dd>{book.length}</dd></div>
+            <div><dt>Loan book</dt><dd>{fmtUsd(bookTot)}</dd></div>
+            <div><dt>Average borrower rate</dt><dd>{fmtPct(bookRate)}</dd></div>
+            <div><dt>Largest loan</dt><dd>{fmtPct(n(bookUsd[0]?.principal) / (bookTot || 1))}</dd></div>
+          </dl>
+          <Panel title="Open loans" sub={`Read from each loan contract, ${String(book[0] ? new Date().toISOString().slice(0, 10) : "")}. Borrowers are wallet addresses.`}>
+            <Table rows={book.slice(0, 25)} cols={[
+              { key: "borrower", title: "borrower", fmt: "addr" }, { key: "pool", title: "pool" }, { key: "asset", title: "asset" },
+              { key: "principal", title: "principal", fmt: "usd" }, { key: "rate", title: "rate", fmt: "pct" }, { key: "date_funded", title: "funded" },
+            ]} />
+          </Panel>
+          <Panel title="Where lenders' syrup tokens sit" sub="Top 50 holders of syrupUSDC and syrupUSDT on Ethereum, by type. Bridge = sent to other chains over CCIP.">
+            <Table rows={usdcAt.map((x) => ({ ...x, usdt: usdtAt.find((y) => y.kind === x.kind)?.share }))} cols={[
+              { key: "kind", title: "held by" }, { key: "balance", title: "syrupUSDC", fmt: "usd" }, { key: "share", title: "share", fmt: "pct" }, { key: "usdt", title: "syrupUSDT share", fmt: "pct" },
+            ]} />
+          </Panel>
+        </section>
+
         <section id="people-sec" className="blk">
           <h2 className="blk-t">Lenders and borrowers</h2>
           <Explorer label="Lenders and borrowers" metrics={people} />
@@ -201,6 +263,13 @@ export default async function BusinessPage() {
               { key: "pool_name", title: "pool" }, { key: "tvl", title: "TVL", fmt: "usd" }, { key: "share_of_protocol_tvl", title: "share", fmt: "pct" },
               { key: "deposits_usd", title: "deposits", fmt: "usd" }, { key: "collateral_usd", title: "collateral", fmt: "usd" },
               { key: "loans_outstanding_usd", title: "loans out", fmt: "usd" }, { key: "utilization", title: "utilization", fmt: "pct" },
+            ]} />
+          </Panel>
+          <Panel title="By quarter" sub="Income from the loan contracts (complete months); balances at quarter-end.">
+            <Table rows={quarters} cols={[
+              { key: "quarter", title: "quarter" }, { key: "gross_interest", title: "interest earned", fmt: "usd" }, { key: "interest_to_lenders", title: "paid to lenders", fmt: "usd" },
+              { key: "kept", title: "kept by Maple", fmt: "usd" }, { key: "offchain_revenue", title: "offchain", fmt: "usd" }, { key: "total_revenue", title: "total revenue", fmt: "usd" },
+              { key: "loans_total", title: "loans", fmt: "usd" }, { key: "deposits_total", title: "deposits", fmt: "usd" }, { key: "buybacks_actual", title: "buybacks", fmt: "usd" },
             ]} />
           </Panel>
           <Panel title="By year" sub="Revenue and buybacks are complete months. Balances are year-end, or latest for this year.">

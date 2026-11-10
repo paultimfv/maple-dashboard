@@ -566,3 +566,70 @@ export async function modelInputs(): Promise<ModelInputs> {
     mcap: x.mcap, price: x.price, supply: x.mcap / x.price, psMedian: x.ps_median,
   };
 }
+
+// ---- Pools, loans, lenders and SYRUP holders (pipeline: pool_state, loan_state, maple_pool_state, loan_book,
+// pool_deposits, pool_withdrawals, syrup_staked, token_holders). All read from Ethereum contracts or Maple's API. ----
+const SYRUP_POOLS = ["syrupUSDC", "syrupUSDT", "syrupUSDG"];
+/** one row per pool: deposits, loans, 30-day changes, utilization, lender yield (30-day share-price growth), borrower rate, collateral cover */
+export async function poolTable() {
+  const rows = await q(`
+    WITH d AS (SELECT max(day) AS d FROM pool_state),
+    now AS (SELECT p.pool, p.total_assets, p.exch_rate FROM pool_state p, d WHERE p.day = d.d),
+    ago AS (SELECT DISTINCT ON (p.pool) p.pool, p.total_assets, p.exch_rate, p.day FROM pool_state p, d WHERE p.day <= d.d - 30 ORDER BY p.pool, p.day DESC),
+    ln AS (SELECT pool, sum(principal_out_usd) AS loans FROM loan_state WHERE day = (SELECT max(day) FROM loan_state) GROUP BY 1),
+    lna AS (SELECT pool, sum(principal_out_usd) AS loans FROM loan_state WHERE day = (SELECT max(day) FROM loan_state WHERE day <= (SELECT max(day) FROM loan_state) - 30) GROUP BY 1),
+    br AS (SELECT pool, sum(principal * rate) / nullif(sum(principal), 0) AS borrow_rate, count(*) AS loans_open
+           FROM loan_book WHERE day = (SELECT max(day) FROM loan_book) GROUP BY 1),
+    cv AS (SELECT k.pool_group AS pool, m.collateral_usd / nullif(m.principal_out_usd, 0) AS coverage
+           FROM maple_pool_state m JOIN contracts k ON k.address = lower(m.pool_address) WHERE m.day = (SELECT max(day) FROM maple_pool_state))
+    SELECT now.pool, now.total_assets AS deposits, CASE WHEN ago.total_assets > 1e6 THEN now.total_assets / ago.total_assets - 1 END AS deposits_30d,
+           ln.loans, CASE WHEN lna.loans > 1e6 THEN ln.loans / lna.loans - 1 END AS loans_30d, ln.loans / nullif(now.total_assets, 0) AS utilization,
+           power(now.exch_rate / nullif(ago.exch_rate, 0), 365.0 / greatest((SELECT d FROM d) - ago.day, 1)) - 1 AS lender_yield,
+           br.borrow_rate, br.loans_open, cv.coverage
+    FROM now LEFT JOIN ago USING (pool) LEFT JOIN ln USING (pool) LEFT JOIN lna USING (pool) LEFT JOIN br USING (pool) LEFT JOIN cv USING (pool)
+    WHERE now.total_assets > 1e6 ORDER BY now.total_assets DESC`);
+  return rows.map(num);
+}
+/** lender yield by pool over time: share-price growth over the previous 30 days, annualised */
+export async function lenderYield() {
+  const rows = await q(`
+    SELECT p.day, p.pool, power(p.exch_rate / a.exch_rate, 365.0 / (p.day - a.day)) - 1 AS yield
+    FROM pool_state p JOIN LATERAL (SELECT exch_rate, day FROM pool_state x WHERE x.pool = p.pool AND x.day <= p.day - 28 ORDER BY day DESC LIMIT 1) a ON true
+    WHERE p.pool = ANY($1) AND p.day >= '2024-09-01' ORDER BY 1`, [SYRUP_POOLS]);
+  return rows.map(num);
+}
+/** collateral ÷ loans by pool, daily (Maple API) */
+export async function collateralCover() {
+  const rows = await q(`
+    SELECT m.day, k.pool_group AS pool, m.collateral_usd / nullif(m.principal_out_usd, 0) AS coverage, m.collateral_usd
+    FROM maple_pool_state m JOIN contracts k ON k.address = lower(m.pool_address)
+    WHERE k.pool_group = ANY($1) ORDER BY 1`, [SYRUP_POOLS]);
+  return rows.map(num);
+}
+/** money in and out of the syrup pools by month: deposits vs withdrawals */
+export async function lenderFlows() {
+  const rows = await q(`
+    WITH pools AS (SELECT address FROM contracts WHERE contract_type = 'MaplePool' AND pool_group = ANY($1)),
+    i AS (SELECT date_trunc('month', block_time)::date AS month, sum(assets) AS deposited FROM pool_deposits WHERE pool IN (SELECT address FROM pools) GROUP BY 1),
+    o AS (SELECT date_trunc('month', block_time)::date AS month, sum(assets) AS withdrawn FROM pool_withdrawals WHERE pool IN (SELECT address FROM pools) GROUP BY 1)
+    SELECT month, coalesce(deposited, 0) AS deposited, -coalesce(withdrawn, 0) AS withdrawn, coalesce(deposited, 0) - coalesce(withdrawn, 0) AS net
+    FROM i FULL JOIN o USING (month) WHERE month >= '2024-06-01' ORDER BY 1`, [SYRUP_POOLS]);
+  return rows.map(num);
+}
+/** today's open loans, read from each loan contract */
+export async function loanBook() {
+  const rows = await q(`SELECT borrower, pool, asset, principal, rate, date_funded FROM loan_book WHERE day = (SELECT max(day) FROM loan_book) ORDER BY principal DESC`);
+  return rows.map(num);
+}
+export async function syrupHolders() {
+  const rows = await q(`SELECT token, rank, address, balance, name, kind FROM token_holders WHERE day = (SELECT max(day) FROM token_holders) ORDER BY token, rank`);
+  return rows.map(num);
+}
+export async function syrupStaked() {
+  const rows = await q(`SELECT day, staked, total_supply FROM syrup_staked ORDER BY day`);
+  return rows.map(num);
+}
+export async function treasuryDaily() {
+  const rows = await q(`SELECT day, syrup_usd, liquid_assets_usd FROM maple_balance_sheet ORDER BY day`);
+  return rows.map(num);
+}

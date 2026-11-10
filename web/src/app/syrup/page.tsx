@@ -1,4 +1,4 @@
-import { syrupPrice, syrupBuybacks, syrupSupply, ssfDaily, mapleBalanceSheet, mapleModelMonthly, modelInputs } from "@/lib/queries";
+import { syrupPrice, syrupBuybacks, syrupSupply, ssfDaily, mapleBalanceSheet, mapleModelMonthly, modelInputs, syrupHolders, syrupStaked } from "@/lib/queries";
 import { Panel, Table } from "@/components/charts";
 import { Linked, Rail, type Metric } from "@/components/explorer";
 import Model from "@/components/model";
@@ -15,6 +15,11 @@ export default async function SyrupPage() {
   const [syrup, buybacks, supply, ssf, bsheet, model, inp] = await Promise.all([
     syrupPrice(), syrupBuybacks(), syrupSupply(), ssfDaily(), mapleBalanceSheet(), mapleModelMonthly(), modelInputs(),
   ]);
+  const [holders, staked] = await Promise.all([syrupHolders(), syrupStaked()]);
+  const st = last(staked);
+  const top = holders.filter((x) => x.token === "SYRUP");
+  const byKind = (() => { const m = new Map<string, number>(); for (const h of top) m.set(String(h.kind), (m.get(String(h.kind)) ?? 0) + n(h.balance));
+    return [...m.entries()].sort((a, b) => b[1] - a[1]).map(([kind, balance]) => ({ kind, balance, share: balance / n(st?.total_supply || 1) })); })();
   const sp = last(syrup), sup = last(supply), sf = last(ssf), bal = bsheet[0], m = last(model), bb = last(buybacks);
   const bbTotal = buybacks.reduce((s, x) => s + n(x.amount_usd), 0);
   const ttm = [...model].reverse().find((x) => x.ttm_revenue != null);
@@ -43,7 +48,7 @@ export default async function SyrupPage() {
     { id: "supply", node: { fig: "d6", id: "circ" }, label: "Circulating supply", value: `${(n(sup?.circulating) / 1e6).toFixed(0)}M`,
       note: "Total supply minus what the Strategic Fund holds.", chart: { kind: "line", data: supply, x: "day", ys: ["circulating"], fmt: "raw" } },
   ];
-  const sections = [{ id: "overview", label: "SYRUP" }, { id: "model", label: "2030 model" }, { id: "data", label: "Data and method" }];
+  const sections = [{ id: "overview", label: "SYRUP" }, { id: "holders", label: "Holders" }, { id: "model", label: "2030 model" }, { id: "data", label: "Data and method" }];
 
   return (
     <div className="page">
@@ -62,6 +67,25 @@ export default async function SyrupPage() {
             <div><dt>Maple&apos;s balance sheet</dt><dd>{fmtUsd(n(bal?.syrup_usd) + n(bal?.liquid_assets_usd))}</dd></div>
             <div><dt>Total supply</dt><dd>{(n(sup?.total_supply) / 1e6).toFixed(0)}M</dd></div>
           </dl>} />
+        </section>
+
+        <section id="holders" className="blk">
+          <h2 className="blk-t">Holders</h2>
+          <dl className="facts">
+            <div><dt>Staked (stSYRUP)</dt><dd>{(n(st?.staked) / 1e6).toFixed(1)}M</dd></div>
+            <div><dt>Share staked</dt><dd>{fmtPct(n(st?.staked) / n(st?.total_supply || 1))}</dd></div>
+            <div><dt>On exchanges (top 50)</dt><dd>{fmtPct(n(byKind.find((x) => x.kind === "exchange")?.balance) / n(st?.total_supply || 1))}</dd></div>
+            <div><dt>Top 10 holders</dt><dd>{fmtPct(top.slice(0, 10).reduce((s, x) => s + n(x.balance), 0) / n(st?.total_supply || 1))}</dd></div>
+          </dl>
+          <Panel title="SYRUP by holder type" sub="Top 50 holders on Ethereum, typed from public address names. Share of total supply.">
+            <Table rows={byKind.map((x) => ({ ...x, balance: Math.round(x.balance).toLocaleString() }))} cols={[{ key: "kind", title: "held by" }, { key: "balance", title: "SYRUP" }, { key: "share", title: "share", fmt: "pct" }]} />
+          </Panel>
+          <Panel title="Top holders" sub="Ethereum, today.">
+            <Table rows={top.slice(0, 20).map((x) => ({ ...x, balance: Math.round(n(x.balance)).toLocaleString(), share: n(x.balance) / n(st?.total_supply || 1) }))} cols={[
+              { key: "address", title: "address", fmt: "addr" }, { key: "name", title: "name" }, { key: "kind", title: "type" },
+              { key: "balance", title: "SYRUP" }, { key: "share", title: "share", fmt: "pct" },
+            ]} />
+          </Panel>
         </section>
 
         <section id="model" className="blk">
