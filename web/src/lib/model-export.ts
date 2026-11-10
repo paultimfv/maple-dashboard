@@ -6,7 +6,7 @@ export type Period = "year" | "quarter" | "month";
 type Row = Record<string, number | string | boolean | null>;
 
 export async function modelLedger(): Promise<Row[]> {
-  const rows = await q(`SELECT * FROM model_ledger WHERE month >= '2023-01-01' ORDER BY month`);
+  const rows = await q(`SELECT l.*, r.otc_published FROM model_ledger l LEFT JOIN monthly_revenue r USING (month) WHERE l.month >= '2023-01-01' ORDER BY l.month`);
   return rows.map((r) => Object.fromEntries(Object.entries(r).map(([k, v]) => [k,
     v instanceof Date ? v.toISOString().slice(0, 10)
     : typeof v === "string" && /^-?\d+(\.\d+)?$/.test(v) ? Number(v) : (v as Row[string])])));
@@ -59,7 +59,15 @@ export const METRICS: Metric[] = [
   { section: "VALUATION", label: "SYRUP Market Cap", key: "syrup_mcap", fmt: "usd" },
   { section: "VALUATION", label: "P/S Multiple (FDV/Revenue)", key: "ps_fdv", fmt: "mult" },
   { section: "VALUATION", label: "SYRUP Price", key: "syrup_price", fmt: "price" },
+  // Conservative view (added last so existing sheet rows don't move). Blockworks' OTC line matches Maple's published
+  // OTC series through Sep 2025 and is $0 after; Maple's offchain numbers from Oct 2025 are unconfirmed, so kept apart.
+  { section: "CONSERVATIVE", label: "Onchain revenue (fees from pool contracts)", key: "onchain_revenue", fmt: "usd" },
+  { section: "CONSERVATIVE", label: "OTC revenue, confirmed (to Sep 2025)", key: "otc_confirmed", fmt: "usd" },
+  { section: "CONSERVATIVE", label: "Offchain revenue, unconfirmed (Oct 2025 on)", key: "offchain_unconfirmed", fmt: "usd" },
+  { section: "CONSERVATIVE", label: "Total Revenue, conservative (onchain + confirmed OTC)", key: "revenue_conservative", fmt: "usd" },
+  { section: "CONSERVATIVE", label: "P/S Multiple, conservative (FDV/Revenue)", key: "ps_conservative", fmt: "mult" },
 ];
+const OTC_CONFIRMED_THROUGH = "2025-09-30";
 
 /** Roll monthly ledger rows up to periods. Flows: sums of complete months. Stocks: last value in the period. */
 export function aggregate(ledger: Row[], period: Period, from = "2024-01-01") {
@@ -78,6 +86,10 @@ export function aggregate(ledger: Row[], period: Period, from = "2024-01-01") {
     const supply = lastOf(g, "stablecoin_supply");
     const annualised = total != null && months ? (total * 12) / months : null;
     const fdv = lastOf(g, "syrup_fdv");
+    const onchain = months ? sum(done, "onchain_revenue") : null;
+    const early = done.filter((r) => String(r.month) <= OTC_CONFIRMED_THROUGH), late = done.filter((r) => String(r.month) > OTC_CONFIRMED_THROUGH);
+    const otcConfirmed = months ? sum(early, "otc_published") : null, offUnconfirmed = months ? sum(late, "offchain_revenue") : null;
+    const conservative = onchain != null && otcConfirmed != null ? onchain + otcConfirmed : null;
     out.push({
       period: p, asOf: String(g[g.length - 1].month).slice(0, 7),
       values: {
@@ -96,6 +108,8 @@ export function aggregate(ledger: Row[], period: Period, from = "2024-01-01") {
         monthly_revenue_avg: div(total, months || null), buyback_rate: lastOf(done, "buyback_rate"),
         buybacks_actual: months ? sum(done, "buybacks_actual") : null, buybacks_implied: months ? sum(done, "buybacks_implied") : null,
         syrup_fdv: fdv, syrup_mcap: lastOf(g, "syrup_mcap"), ps_fdv: div(fdv, annualised), syrup_price: lastOf(g, "syrup_price"),
+        onchain_revenue: onchain, otc_confirmed: otcConfirmed, offchain_unconfirmed: offUnconfirmed, revenue_conservative: conservative,
+        ps_conservative: div(fdv, conservative != null && months ? (conservative * 12) / months : null),
       },
     });
     prevSupply = supply ?? prevSupply;
