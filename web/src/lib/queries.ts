@@ -633,3 +633,47 @@ export async function treasuryDaily() {
   const rows = await q(`SELECT day, syrup_usd, liquid_assets_usd FROM maple_balance_sheet ORDER BY day`);
   return rows.map(num);
 }
+
+// ---- Growth drivers: yield-bearing stablecoins and stablecoin lending (pipeline: macro_onchain = Ethereum contract reads,
+// weekly; llama_lending = DefiLlama, all chains, weekly; Maple from pool_state / loan_state) ----
+/** yield-bearing stablecoins on Ethereum, weekly, USD, by token (syrupUSDC/USDT from Maple's pool contracts) */
+export async function yieldBearing() {
+  const rows = await q(`
+    WITH d AS (SELECT DISTINCT day FROM macro_onchain)
+    SELECT day, name, value_usd FROM macro_onchain WHERE metric = 'yield_bearing'
+    UNION ALL
+    SELECT d.day, p.pool, p.total_assets FROM d CROSS JOIN unnest(ARRAY['syrupUSDC','syrupUSDT']) AS pl(pool)
+      JOIN LATERAL (SELECT pool, total_assets FROM pool_state x WHERE x.pool = pl.pool AND x.day <= d.day ORDER BY x.day DESC LIMIT 1) p ON true
+    ORDER BY 1, 3 DESC`);
+  return rows.map(num);
+}
+/** stablecoin loans on Ethereum by lender (Aave, Spark, Compound from their contracts; Maple loans outstanding), weekly */
+export async function ethLending() {
+  const rows = await q(`
+    WITH d AS (SELECT DISTINCT day FROM macro_onchain)
+    SELECT day, name, value_usd AS borrowed, (SELECT value_usd FROM macro_onchain s WHERE s.day = m.day AND s.name = m.name AND s.metric = 'supplied') AS supplied
+    FROM macro_onchain m WHERE metric = 'borrowed'
+    UNION ALL
+    SELECT d.day, 'Maple', l.loans, l.loans FROM d JOIN LATERAL (
+      SELECT sum(principal_out_usd) AS loans FROM loan_state WHERE day = (SELECT max(day) FROM loan_state WHERE day <= d.day)) l ON true
+    ORDER BY 1, 3 DESC`);
+  return rows.map(num);
+}
+/** onchain lending, all chains: the 25 largest lending protocols on DefiLlama, weekly (supplied = TVL + borrowed) */
+export async function llamaLending() {
+  const rows = await q(`SELECT day, protocol, supplied_usd, borrowed_usd FROM llama_lending WHERE day >= '2023-01-01' ORDER BY day`);
+  return rows.map(num);
+}
+/** CoinGecko 'yield-bearing-stablecoins' category: today's top 15 (all chains), daily market caps for the last year */
+export async function cgYieldBearing() {
+  const rows = await q(`SELECT day, coin, symbol, mcap_usd FROM cg_yield_bearing
+    WHERE coin IN (SELECT coin FROM cg_yield_bearing WHERE day = (SELECT max(day) FROM cg_yield_bearing)) ORDER BY day`);
+  return rows.map(num);
+}
+/** Maple's loans outstanding and deposits by day (for shares and utilization next to other lenders) */
+export async function mapleBookDaily() {
+  const rows = await q(`
+    SELECT l.day, l.loans, d.deposits FROM (SELECT day, sum(principal_out_usd) AS loans FROM loan_state GROUP BY 1) l
+    JOIN (SELECT day, sum(total_assets) AS deposits FROM pool_state WHERE pool NOT ILIKE '%WETH%' GROUP BY 1) d USING (day) WHERE l.day >= '2024-01-01' ORDER BY 1`);
+  return rows.map(num);
+}
