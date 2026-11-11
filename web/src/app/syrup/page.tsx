@@ -1,4 +1,4 @@
-import { syrupPrice, syrupBuybacks, syrupSupply, ssfDaily, mapleBalanceSheet, mapleModelMonthly, modelInputs, syrupHolders, syrupStaked } from "@/lib/queries";
+import { syrupPrice, syrupBuybacks, syrupSupply, ssfDaily, mapleBalanceSheet, mapleModelMonthly, syrupHolders, syrupStaked } from "@/lib/queries";
 import { Panel, Table } from "@/components/charts";
 import { Linked, Rail, type Metric } from "@/components/explorer";
 import Model from "@/components/model";
@@ -12,8 +12,8 @@ const MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct
 const monY = (d: unknown) => `${MON[Number(String(d).slice(5, 7)) - 1] ?? ""} ${String(d).slice(0, 4)}`;
 
 export default async function SyrupPage() {
-  const [syrup, buybacks, supply, ssf, bsheet, model, inp] = await Promise.all([
-    syrupPrice(), syrupBuybacks(), syrupSupply(), ssfDaily(), mapleBalanceSheet(), mapleModelMonthly(), modelInputs(),
+  const [syrup, buybacks, supply, ssf, bsheet, model] = await Promise.all([
+    syrupPrice(), syrupBuybacks(), syrupSupply(), ssfDaily(), mapleBalanceSheet(), mapleModelMonthly(),
   ]);
   const [holders, staked] = await Promise.all([syrupHolders(), syrupStaked()]);
   const st = last(staked);
@@ -90,8 +90,8 @@ export default async function SyrupPage() {
 
         <section id="model" className="blk">
           <h2 className="blk-t">2030 model</h2>
-          <p className="blk-l">Revenue is the dollars Maple lends times the cut it keeps. Move the settings to see what SYRUP could be worth in 2030. Starting values update daily.</p>
-          <Model inp={inp} />
+          <p className="blk-l">Stablecoins grow, Maple keeps its share of yield-bearing ones, lends almost all of it, and keeps a cut of the interest. Move the settings to see what SYRUP could be worth in 2030.</p>
+          <Model />
         </section>
 
         <section id="data" className="blk blk-data">
@@ -102,8 +102,7 @@ export default async function SyrupPage() {
           <div className="method-b">
             <p><span className="text-ink-2">Buybacks.</span> Amounts and Strategic Fund holdings are Maple-reported. June, July and August 2026 are checked onchain: each matches a SYRUP withdrawal from Binance into the same wallet (0x99f0…a9ca). Maple buys on a centralised exchange, not onchain.</p>
             <p><span className="text-ink-2">Balance sheet.</span> {(n(bal?.syrup_amount) / 1e6).toFixed(1)}M SYRUP ({fmtUsd(n(bal?.syrup_usd))}) plus {fmtUsd(n(bal?.liquid_assets_usd))} in liquid assets.</p>
-            <p><span className="text-ink-2">Model.</span> Core deposits = stablecoins × Maple&apos;s core share. syrupUSDG on Earn = Earn TVL × syrupUSDG&apos;s share of Earn. Revenue = average core deposits × core take rate + average syrupUSDG × Maple&apos;s fee (0.746%) + offchain revenue. Buybacks follow MIP-021. Market cap = revenue × P/S; price = market cap ÷ circulating supply. 2027 and 2029 stablecoins sit at the geometric midpoint of the years around them; Earn TVL grows at a constant rate to its 2030 setting.</p>
-            <p><span className="text-ink-2">Starting values.</span> Stablecoins {fmtUsd(inp.stablecoins)}, Maple deposits {fmtUsd(inp.deposits)}, syrupUSDG on Robinhood Chain {fmtUsd(inp.syrupOnEarn)}, Earn TVL {fmtUsd(inp.earnTvl)}, revenue over 12 months {fmtUsd(inp.ttmRevenue)}, core take rate {fmtPct(inp.takeRateQ)} (last 3 months), circulating supply {(inp.supply / 1e6).toFixed(0)}M. As of {inp.asOf}. Not investment advice.</p>
+            <p><span className="text-ink-2">Model.</span> Stablecoin supply → yield-bearing stablecoins (share of supply) → syrupUSD (Maple&apos;s share of those) → loan book (1.26× syrupUSD, as in 2026) → loans (× utilization) → revenue (average loans over the year × take rate) → buybacks (MIP-021) → FDV (revenue × P/S) → price (FDV ÷ circulating supply). Actuals run to 31 Oct 2026; the 2026 take rate is annualised. Stablecoins compound at a constant rate to the 2030 setting. Not investment advice.</p>
           </div>
         </section>
       </main>
