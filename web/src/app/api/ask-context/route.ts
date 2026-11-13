@@ -3,7 +3,7 @@ import * as Q from "@/lib/queries";
 import { table, contextResponse } from "@/lib/ask-context";
 import { modelLedger, aggregate } from "@/lib/model-export";
 
-export const dynamic = "force-dynamic";
+export const revalidate = 21600; // data updates daily; cache 6h so each view does not query Neon
 
 export async function GET() {
   const [rev, model, aumPools, aumRep, ledger, supply, snap, lenders, borrowers, ssf, bsheet] = await Promise.all([

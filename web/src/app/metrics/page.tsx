@@ -4,7 +4,7 @@ import { Explorer, Linked, Rail, type Metric } from "@/components/explorer";
 import { fmtUsd, fmtPct } from "@/lib/fmt";
 import { modelLedger, aggregate } from "@/lib/model-export";
 
-export const dynamic = "force-dynamic";
+export const revalidate = 21600; // data updates daily; cache 6h so each view does not query Neon
 
 const last = <T,>(a: T[]) => a[a.length - 1];
 const n = (v: unknown) => Number(v ?? 0);

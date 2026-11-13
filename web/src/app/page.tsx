@@ -5,7 +5,7 @@ import { Mini } from "@/components/mini";
 import { fmtUsd, fmtPct } from "@/lib/fmt";
 import { modelLedger } from "@/lib/model-export";
 
-export const dynamic = "force-dynamic";
+export const revalidate = 21600; // data updates daily; cache 6h so each view does not query Neon
 
 type R = Record<string, unknown>;
 const last = <T,>(a: T[]) => a[a.length - 1];
