@@ -2,6 +2,7 @@
 import * as Q from "@/lib/queries";
 import { table, contextResponse } from "@/lib/ask-context";
 import { modelLedger, aggregate } from "@/lib/model-export";
+import { MARGIN_WEEKS } from "@/lib/margin-calls";
 
 export const revalidate = 21600; // data updates daily; cache 6h so each view does not query Neon
 
@@ -17,6 +18,7 @@ export async function GET() {
   const [pools, lyield, cover, flows, book, holders, staked, tre] = await Promise.all([
     Q.poolTable(), Q.lenderYield(), Q.collateralCover(), Q.lenderFlows(), Q.loanBook(), Q.syrupHolders(), Q.syrupStaked(), Q.treasuryDaily(),
   ]);
+  const [mkts, venues] = await Promise.all([Q.syrupMarkets(), Q.syrupVenues()]);
   const [yb, ethLend, llamaLend, cgYb, mapleBook] = await Promise.all([Q.yieldBearing(), Q.ethLending(), Q.llamaLending(), Q.cgYieldBearing(), Q.mapleBookDaily()]);
   /* take rate = Maple's cut of the interest on its loans: onchain fees x 12 / loans outstanding at month end */
   const take = ledger.filter((x) => !x.partial_month && x.loans_total && x.onchain_revenue != null)
@@ -28,6 +30,9 @@ Pages: Business (/), Macro (/macro), Model (/model). Every Maple number is rebui
 Definitions: revenue = syrupUSD (syrupUSDC/USDT/USDG loan managers + strategies) + other pools (every other onchain pool), both from contract fee events (open-term ClaimedFundsDistributed, fixed-term fees, strategy fees; WETH pools excluded), + offchain (Maple-reported total minus onchain; Maple Direct / institutional). Total revenue is always Maple-reported; when onchain exceeds it (Sep-Oct 2026) offchain is not separable. Loans outstanding = principalOut() of every USD loan manager, month-end. AUM = lender deposits + borrower collateral. MIP-021 buyback tiers: 10% of monthly revenue below $1.5M, 20% below $2M, 30% above. P/S = SYRUP market cap / trailing-12-month revenue. syrupUSDG = Maple's USDG pool; most of it sits on Robinhood Chain as collateral in Robinhood Earn.
 `,
     table("SYRUP price, daily (USD, CoinGecko)", syrup, { max: 200, cols: ["day", "price_usd", "mcap_usd", "volume_usd"] }),
+    table("SYRUP markets, daily snapshot: spot and perpetuals 24h volume, perp open interest, order book depth to move price +2%/-2% on major exchanges, DEX pool liquidity (CoinGecko, GeckoTerminal)", mkts),
+    table("SYRUP venues today: 24h volume, ±2% depth, spread, open interest, DEX liquidity", venues, { max: 60 }),
+    table("Maple margin calls by week, Maple-reported (X posts): calls, cured, liquidations, average hours to cure (24h cure period), collateral posted against calls, posted above what calls required, top-ups from borrowers not called", MARGIN_WEEKS),
     table("SYRUP supply", supply.slice(-30)),
     table("SYRUP buybacks by month", buybacks),
     table("Syrup Strategic Fund holdings", ssf, { max: 60 }),

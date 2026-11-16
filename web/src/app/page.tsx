@@ -1,4 +1,5 @@
-import { syrupPrice, syrupBuybacks, mapleModelMonthly, mapleAumReported, mapleRevenueMonthly, utilization, earnShare, stablecoinSupplyGlobal } from "@/lib/queries";
+import { syrupPrice, syrupBuybacks, mapleModelMonthly, mapleAumReported, mapleRevenueMonthly, utilization, earnShare, stablecoinSupplyGlobal, syrupMarkets } from "@/lib/queries";
+import { MARGIN_WEEKS, marginRows } from "@/lib/margin-calls";
 import { Explorer, type Metric } from "@/components/explorer";
 import { Diagrams } from "@/components/exhibit";
 import { Mini } from "@/components/mini";
@@ -24,6 +25,7 @@ export default async function Home() {
   const [syrup, buybacks, model, aumRep, ledger, rev, util, share, stable] = await Promise.all([
     syrupPrice(), syrupBuybacks(), mapleModelMonthly(), mapleAumReported(), modelLedger(), mapleRevenueMonthly(), utilization(), earnShare(), stablecoinSupplyGlobal(),
   ]);
+  const mkts = await syrupMarkets(); const mk = last(mkts), mw = last(MARGIN_WEEKS);
   const sp = last(syrup), ar = last(aumRep), r = last(rev), u = last(util), sh = last(share), sg = last(stable), bb = last(buybacks);
   const ttm = [...model].reverse().find((x) => x.ttm_revenue != null);
   const loans = ledger.filter((x) => x.loans_total != null && String(x.month) >= "2024-01-01");
@@ -70,6 +72,9 @@ export default async function Home() {
             <Mini href="/syrup#ps" where="SYRUP" label="Price to sales" value={`${n(last(psRows)?.ps_ttm).toFixed(1)}×`} data={psRows} x="month" y="ps_ttm" />
             <Mini href="/metrics#utilization" where="Key business metrics" label="syrupUSDG lent out" value={fmtPct(n(u?.utilization))} data={util} x="day" y="utilization" />
             <Mini href="/metrics#earn-share" where="Key business metrics" tone="rh" label="syrupUSDG share of Robinhood Earn" value={fmtPct(n(sh?.maple_share_of_earn))} data={share} x="day" y="maple_share_of_earn" />
+            <Mini href="/syrup#volume" where="SYRUP" label="SYRUP spot volume, 24h" value={fmtUsd(n(sp?.volume_usd))} data={syrup.slice(-90)} x="day" y="volume_usd" kind="bars" />
+            <Mini href="/syrup#oi" where="SYRUP" label="SYRUP open interest" value={fmtUsd(n(mk?.open_interest_usd))} data={mkts} x="day" y="open_interest_usd" />
+            <Mini href="/metrics#margin-calls" where="Key business metrics" label="Margin calls cured, last week" value={`${mw.cured} of ${mw.calls}`} data={marginRows} x="week" y="cured" kind="bars" />
             <Mini href="/macro#stablecoins" where="Growth drivers" label="Stablecoins, all chains" value={fmtUsd(n(sg?.supply_usd))} change={yearAgo(stable, "day", "supply_usd")} data={stable} x="day" y="supply_usd" />
           </div>
         </section>

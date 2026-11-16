@@ -1,6 +1,6 @@
-import { syrupPrice, syrupBuybacks, syrupSupply, ssfDaily, mapleBalanceSheet, mapleModelMonthly, syrupHolders, syrupStaked } from "@/lib/queries";
+import { syrupPrice, syrupBuybacks, syrupSupply, ssfDaily, mapleBalanceSheet, mapleModelMonthly, syrupHolders, syrupStaked, syrupMarkets, syrupVenues } from "@/lib/queries";
 import { Panel, Table } from "@/components/charts";
-import { Linked, Rail, type Metric } from "@/components/explorer";
+import { Explorer, Linked, Rail, type Metric } from "@/components/explorer";
 import Model from "@/components/model";
 import { fmtUsd, fmtPct } from "@/lib/fmt";
 
@@ -15,7 +15,8 @@ export default async function SyrupPage() {
   const [syrup, buybacks, supply, ssf, bsheet, model] = await Promise.all([
     syrupPrice(), syrupBuybacks(), syrupSupply(), ssfDaily(), mapleBalanceSheet(), mapleModelMonthly(),
   ]);
-  const [holders, staked] = await Promise.all([syrupHolders(), syrupStaked()]);
+  const [holders, staked, mkts, venues] = await Promise.all([syrupHolders(), syrupStaked(), syrupMarkets(), syrupVenues()]);
+  const mk = last(mkts);
   const st = last(staked);
   const top = holders.filter((x) => x.token === "SYRUP");
   const byKind = (() => { const m = new Map<string, number>(); for (const h of top) m.set(String(h.kind), (m.get(String(h.kind)) ?? 0) + n(h.balance));
@@ -48,7 +49,20 @@ export default async function SyrupPage() {
     { id: "supply", node: { fig: "d6", id: "circ" }, label: "Circulating supply", value: `${(n(sup?.circulating) / 1e6).toFixed(0)}M`,
       note: "Total supply minus what the Strategic Fund holds.", chart: { kind: "line", data: supply, x: "day", ys: ["circulating"], fmt: "raw" } },
   ];
-  const sections = [{ id: "overview", label: "SYRUP" }, { id: "holders", label: "Holders" }, { id: "model", label: "2030 model" }, { id: "data", label: "Data and method" }];
+  const vol30 = syrup.slice(-30).reduce((t, x) => t + n(x.volume_usd), 0) / Math.max(1, syrup.slice(-30).length);
+  const market: Metric[] = [
+    { id: "volume", label: "Spot volume, 24h", value: fmtUsd(n(sp?.volume_usd)), change: (() => { const a = syrup.slice(-395, -335); const v = a.reduce((t, x) => t + n(x.volume_usd), 0) / Math.max(1, a.length); return v ? vol30 / v - 1 : NaN; })(),
+      note: `Spot trading across all exchanges, daily, from CoinGecko. 30-day average ${fmtUsd(vol30)}. Change compares 30-day averages a year apart.`, chart: { kind: "bars", data: syrup, x: "day", ys: ["volume_usd"] } },
+    { id: "oi", label: "Open interest, perpetuals", value: fmtUsd(n(mk?.open_interest_usd)),
+      note: `Open perpetual futures positions on every venue CoinGecko tracks, daily snapshot. ${fmtUsd(n(mk?.perp_volume_usd))} traded in the last 24h.`, chart: { kind: "line", data: mkts, x: "day", ys: ["open_interest_usd"], fmt: "usd" } },
+    { id: "perp-volume", label: "Perpetuals volume, 24h", value: fmtUsd(n(mk?.perp_volume_usd)),
+      note: "Perpetual futures traded in the last 24 hours against spot, daily snapshot.", chart: { kind: "bars", data: mkts, x: "day", ys: ["spot_volume_usd", "perp_volume_usd"] } },
+    { id: "depth", label: "Order book depth, ±2%", value: `${fmtUsd(n(mk?.depth_up_usd))} / ${fmtUsd(n(mk?.depth_down_usd))}`,
+      note: "Dollars it takes to move the price 2% up / 2% down, summed over the order books on major exchanges (Binance, Coinbase, Upbit, Kraken, Bitvavo, Bitstamp and others).", chart: { kind: "line", data: mkts, x: "day", ys: ["depth_up_usd", "depth_down_usd"], fmt: "usd" } },
+    { id: "dex", label: "DEX liquidity", value: fmtUsd(n(mk?.dex_liquidity_usd)),
+      note: "Assets in SYRUP pools on Ethereum DEXs (Uniswap and others), from GeckoTerminal, daily snapshot.", chart: { kind: "line", data: mkts, x: "day", ys: ["dex_liquidity_usd"], fmt: "usd" } },
+  ];
+  const sections = [{ id: "overview", label: "SYRUP" }, { id: "markets", label: "Markets" }, { id: "holders", label: "Holders" }, { id: "model", label: "2030 model" }, { id: "data", label: "Data and method" }];
 
   return (
     <div className="page">
@@ -67,6 +81,23 @@ export default async function SyrupPage() {
             <div><dt>Maple&apos;s balance sheet</dt><dd>{fmtUsd(n(bal?.syrup_usd) + n(bal?.liquid_assets_usd))}</dd></div>
             <div><dt>Total supply</dt><dd>{(n(sup?.total_supply) / 1e6).toFixed(0)}M</dd></div>
           </dl>} />
+        </section>
+
+        <section id="markets" className="blk">
+          <h2 className="blk-t">Markets</h2>
+          <Explorer label="Markets" metrics={market} aside={
+            <dl className="facts">
+              <div><dt>Spot + perp volume ÷ market cap</dt><dd>{fmtPct((n(sp?.volume_usd) + n(mk?.perp_volume_usd)) / n(sp?.mcap_usd || 1))}</dd></div>
+              <div><dt>Open interest ÷ market cap</dt><dd>{fmtPct(n(mk?.open_interest_usd) / n(sp?.mcap_usd || 1))}</dd></div>
+              <div><dt>Perpetuals ÷ spot volume</dt><dd>{(n(mk?.perp_volume_usd) / n(mk?.spot_volume_usd || 1)).toFixed(1)}×</dd></div>
+            </dl>} />
+          <Panel title="Where SYRUP trades" sub="Today, largest 24h volume first. Spot books, perpetual futures and DEX pools.">
+            <Table rows={venues.slice(0, 20).map((x) => ({ ...x, kind: x.kind === "perp" ? "perpetual" : x.kind === "pool" ? "DEX pool" : "spot" }))} cols={[
+              { key: "venue", title: "venue" }, { key: "kind", title: "market" }, { key: "volume_usd", title: "24h volume", fmt: "usd" },
+              { key: "depth_up_usd", title: "+2% depth", fmt: "usd" }, { key: "depth_down_usd", title: "−2% depth", fmt: "usd" }, { key: "spread", title: "spread", fmt: "pct" },
+              { key: "oi_usd", title: "open interest", fmt: "usd" }, { key: "liquidity_usd", title: "liquidity", fmt: "usd" },
+            ]} />
+          </Panel>
         </section>
 
         <section id="holders" className="blk">
@@ -101,6 +132,7 @@ export default async function SyrupPage() {
           </Panel>
           <div className="method-b">
             <p><span className="text-ink-2">Buybacks.</span> Amounts and Strategic Fund holdings are Maple-reported. June, July and August 2026 are checked onchain: each matches a SYRUP withdrawal from Binance into the same wallet (0x99f0…a9ca). Maple buys on a centralised exchange, not onchain.</p>
+            <p><span className="text-ink-2">Markets.</span> Spot volume history is CoinGecko&apos;s daily total. Open interest, perpetuals volume, order book depth and DEX liquidity are a daily snapshot from CoinGecko (tickers and derivatives) and GeckoTerminal, kept from 16 Nov 2026. Headline depth counts major exchanges only; several small venues report books deeper than their whole day&apos;s volume.</p>
             <p><span className="text-ink-2">Balance sheet.</span> {(n(bal?.syrup_amount) / 1e6).toFixed(1)}M SYRUP ({fmtUsd(n(bal?.syrup_usd))}) plus {fmtUsd(n(bal?.liquid_assets_usd))} in liquid assets.</p>
             <p><span className="text-ink-2">Model.</span> Stablecoin supply → yield-bearing stablecoins (share of supply) → syrupUSD (Maple&apos;s share of those) → loan book (1.26× syrupUSD, as in 2026) → loans (× utilization) → revenue (average loans over the year × take rate) → buybacks (MIP-021) → FDV (revenue × P/S) → price (FDV ÷ circulating supply). Actuals run to 31 Oct 2026; the 2026 take rate is annualised. Stablecoins compound at a constant rate to the 2030 setting. Not investment advice.</p>
           </div>

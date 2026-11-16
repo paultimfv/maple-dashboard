@@ -3,11 +3,13 @@ import { Panel, Table } from "@/components/charts";
 import { Explorer, Linked, Rail, type Metric } from "@/components/explorer";
 import { fmtUsd, fmtPct } from "@/lib/fmt";
 import { modelLedger, aggregate } from "@/lib/model-export";
+import { MARGIN_WEEKS, marginRows, hm } from "@/lib/margin-calls";
 
 export const revalidate = 21600; // data updates daily; cache 6h so each view does not query Neon
 
 const last = <T,>(a: T[]) => a[a.length - 1];
 const n = (v: unknown) => Number(v ?? 0);
+const MON3 = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
 export default async function BusinessPage() {
   const [rev, model, aumPools, aumNow, ledger, supply, aumRep, snap] = await Promise.all([
@@ -143,7 +145,11 @@ export default async function BusinessPage() {
     { id: "interest", node: { fig: "d6", id: "s1" }, label: `Interest paid, ${monY(bw?.month)}`, value: fmtUsd(n(bw?.interest_paid_usd)), change: iyoy,
       note: "Interest borrowers paid on open-term loans. Change compares the last 12 months with the 12 before.", chart: { kind: "bars", data: borrowers, x: "month", ys: ["interest_paid_usd"] } },
   ];
+  const mw = last(MARGIN_WEEKS);
   const lending: Metric[] = [
+    { id: "margin-calls", node: { fig: "d4", id: "ln" }, label: "Margin calls cured, last week", value: `${mw.cured} of ${mw.calls}`,
+      note: `Maple-reported. ${mw.liquidations} liquidations. Average time to cure ${hm(mw.cure_hours)} against a 24-hour cure period. Bars: collateral borrowers added that week.`,
+      chart: { kind: "bars", data: marginRows, x: "week", ys: ["required_usd", "above_required_usd", "unrequested_usd"] } },
     { id: "lender-yield", node: { fig: "d4", id: "p" }, label: "Lender yield, syrupUSDC", value: fmtPct(n(pools.find((x) => x.pool === "syrupUSDC")?.lender_yield)),
       note: "What lenders earn: each pool token's share-price growth over the last 30 days, annualised.", chart: { kind: "line", data: yieldW, x: "day", ys: POOLS } },
     { id: "borrow-rate", node: { fig: "d4", id: "ln" }, label: "Borrower rate, open loans", value: fmtPct(bookRate),
@@ -210,7 +216,13 @@ export default async function BusinessPage() {
 
         <section id="lending-sec" className="blk">
           <h2 className="blk-t">Lending</h2>
-          <Linked label="Lending" metrics={lending} figs={[{ id: "d4", title: "How a Maple pool is built", lede: "Every pool repeats the same set of contracts. Fees go to the treasury and the pool delegate inside each loan payment.", source: "Maple docs, smart contract architecture; Maple address registry" }]} />
+          <Linked label="Lending" metrics={lending} figs={[{ id: "d4", title: "How a Maple pool is built", lede: "Every pool repeats the same set of contracts. Fees go to the treasury and the pool delegate inside each loan payment.", source: "Maple docs, smart contract architecture; Maple address registry" }]} aside={
+            <dl className="facts">
+              <div><dt>Margin calls, week to {mw.week.slice(8, 10).replace(/^0/, "")} {MON3[Number(mw.week.slice(5, 7)) - 1]}</dt><dd>{mw.calls}, {mw.cured === mw.calls ? "all cured" : `${mw.cured} cured`}</dd></div>
+              <div><dt>Liquidations</dt><dd>{mw.liquidations}</dd></div>
+              <div><dt>Average time to cure</dt><dd>{hm(mw.cure_hours)}</dd></div>
+              <div><dt>Collateral added</dt><dd>{fmtUsd(mw.collateral_usd + mw.unrequested_usd)}</dd></div>
+            </dl>} />
         </section>
 
         <section id="pools-sec" className="blk">
@@ -293,6 +305,7 @@ export default async function BusinessPage() {
             <p><span className="text-ink-2">Revenue.</span> syrupUSD = fees from the syrupUSDC, syrupUSDT and syrupUSDG loan managers and their Aave/Sky strategies. Other pools = fees from every other Maple pool. Both onchain: open-term <code>ClaimedFundsDistributed</code>, fixed-term <code>ManagementFeesPaid</code> / <code>ServiceFeesPaid</code> / <code>OriginationFeesPaid</code>, strategy <code>StrategyFeesCollected</code>; WETH pools excluded. They match DeFiLlama&apos;s Maple onchain revenue within 0.3% a month. Offchain = Maple&apos;s reported total minus onchain fees. In Sep–Oct 2026 onchain fees were above Maple&apos;s total, so offchain shows as a gap for those months.</p>
             <p><span className="text-ink-2">Loans.</span> <code>principalOut()</code> of every USD loan manager at each month-end.</p>
             <p><span className="text-ink-2">Lenders and borrowers.</span> Lenders = distinct share recipients of ERC-4626 <code>Deposit</code> on every USD pool. Borrowers = <code>loan.borrower()</code> for every loan that made a payment.</p>
+            <p><span className="text-ink-2">Margin calls.</span> Maple-reported, from its weekly updates on X; not visible onchain because collateral sits with custodians. &ldquo;Collateral added&rdquo; is collateral posted against calls plus top-ups from borrowers who were not called.</p>
             <p><span className="text-ink-2">Margins.</span> Interest paid, Maple&apos;s cut and net interest margin are Maple-reported. From onchain open-term loans alone: interest {fmtUsd(ttmGross)}, cut {fmtPct(ttmRev / (ttmGross || 1))}, revenue ÷ average pool assets {fmtPct(ttmRev / (ttmAssets || 1))}.</p>
           </div>
         </section>
