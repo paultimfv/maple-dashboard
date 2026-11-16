@@ -2,7 +2,6 @@
 import * as Q from "@/lib/queries";
 import { table, contextResponse } from "@/lib/ask-context";
 import { modelLedger, aggregate } from "@/lib/model-export";
-import { MARGIN_WEEKS } from "@/lib/margin-calls";
 
 export const revalidate = 21600; // data updates daily; cache 6h so each view does not query Neon
 
@@ -18,7 +17,7 @@ export async function GET() {
   const [pools, lyield, cover, flows, book, holders, staked, tre] = await Promise.all([
     Q.poolTable(), Q.lenderYield(), Q.collateralCover(), Q.lenderFlows(), Q.loanBook(), Q.syrupHolders(), Q.syrupStaked(), Q.treasuryDaily(),
   ]);
-  const [mkts, venues] = await Promise.all([Q.syrupMarkets(), Q.syrupVenues()]);
+  const [mkts, venues, byAsset, mDaily, mEvents] = await Promise.all([Q.syrupMarkets(), Q.syrupVenues(), Q.collateralByAsset(), Q.marginDaily(), Q.marginEvents()]);
   const [yb, ethLend, llamaLend, cgYb, mapleBook] = await Promise.all([Q.yieldBearing(), Q.ethLending(), Q.llamaLending(), Q.cgYieldBearing(), Q.mapleBookDaily()]);
   /* take rate = Maple's cut of the interest on its loans: onchain fees x 12 / loans outstanding at month end */
   const take = ledger.filter((x) => !x.partial_month && x.loans_total && x.onchain_revenue != null)
@@ -32,7 +31,9 @@ Definitions: revenue = syrupUSD (syrupUSDC/USDT/USDG loan managers + strategies)
     table("SYRUP price, daily (USD, CoinGecko)", syrup, { max: 200, cols: ["day", "price_usd", "mcap_usd", "volume_usd"] }),
     table("SYRUP markets, daily snapshot: spot and perpetuals 24h volume, perp open interest, order book depth to move price +2%/-2% on major exchanges, DEX pool liquidity (CoinGecko, GeckoTerminal)", mkts),
     table("SYRUP venues today: 24h volume, ±2% depth, spread, open interest, DEX liquidity", venues, { max: 60 }),
-    table("Maple margin calls by week, Maple-reported (X posts): calls, cured, liquidations, average hours to cure (24h cure period), collateral posted against calls, posted above what calls required, top-ups from borrowers not called", MARGIN_WEEKS),
+    table("Open loans by collateral asset today (Maple API): loans, principal, collateral, cover, loans in margin call, price fall to first margin call and to first liquidation", byAsset),
+    table("Margin calls per day, tracked hourly from Maple's API (loan below its margin call level): loans, in call, calls, cured, top-ups USD, average hours to cure", mDaily),
+    table("Margin call log (calls, cures, collateral top-ups)", mEvents, { max: 100 }),
     table("SYRUP supply", supply.slice(-30)),
     table("SYRUP buybacks by month", buybacks),
     table("Syrup Strategic Fund holdings", ssf, { max: 60 }),

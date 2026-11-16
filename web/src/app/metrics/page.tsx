@@ -1,9 +1,8 @@
-import { rhAum, earnAllocation, earnShare, interestWeekly, loansWeekly, shareOfUsdg, poolState, utilization, topLoans, syrupPrice, syrupBuybacks, revenueBridge, capitalOnChain, holders, mapleRevenueMonthly, mapleModelMonthly, mapleAumByPool, mapleAumLatest, syrupSupply, mapleAumReported, poolsSnapshot, mapleLenders, mapleBorrowers, ssfDaily, mapleBalanceSheet, mapleKpis, poolTable, lenderYield, collateralCover, lenderFlows, loanBook, syrupHolders, treasuryDaily } from "@/lib/queries";
+import { rhAum, earnAllocation, earnShare, interestWeekly, loansWeekly, shareOfUsdg, poolState, utilization, topLoans, syrupPrice, syrupBuybacks, revenueBridge, capitalOnChain, holders, mapleRevenueMonthly, mapleModelMonthly, mapleAumByPool, mapleAumLatest, syrupSupply, mapleAumReported, poolsSnapshot, mapleLenders, mapleBorrowers, ssfDaily, mapleBalanceSheet, mapleKpis, poolTable, lenderYield, collateralCover, lenderFlows, loanBook, syrupHolders, treasuryDaily, collateralByAsset, marginDaily, marginEvents } from "@/lib/queries";
 import { Panel, Table } from "@/components/charts";
 import { Explorer, Linked, Rail, type Metric } from "@/components/explorer";
 import { fmtUsd, fmtPct } from "@/lib/fmt";
 import { modelLedger, aggregate } from "@/lib/model-export";
-import { MARGIN_WEEKS, marginRows, hm } from "@/lib/margin-calls";
 
 export const revalidate = 21600; // data updates daily; cache 6h so each view does not query Neon
 
@@ -145,11 +144,18 @@ export default async function BusinessPage() {
     { id: "interest", node: { fig: "d6", id: "s1" }, label: `Interest paid, ${monY(bw?.month)}`, value: fmtUsd(n(bw?.interest_paid_usd)), change: iyoy,
       note: "Interest borrowers paid on open-term loans. Change compares the last 12 months with the 12 before.", chart: { kind: "bars", data: borrowers, x: "month", ys: ["interest_paid_usd"] } },
   ];
-  const mw = last(MARGIN_WEEKS);
+  const [byAsset, mDaily, mEvents] = await Promise.all([collateralByAsset(), marginDaily(), marginEvents()]);
+  const md = last(mDaily);
+  const since = String(mDaily[0]?.day ?? "").slice(0, 10);
+  const sinceLong = since ? `${Number(since.slice(8, 10))} ${MON3[Number(since.slice(5, 7)) - 1]} ${since.slice(0, 4)}` : "";
+  const calls = mEvents.filter((x) => x.kind === "call").length, cured = mEvents.filter((x) => x.kind === "cured");
+  const cureH = cured.length ? cured.reduce((t, x) => t + n(x.hours), 0) / cured.length : NaN;
+  const btc = byAsset.find((x) => x.asset === "BTC");
+  const hm = (h: number) => `${Math.floor(h)}h ${String(Math.round((h % 1) * 60)).padStart(2, "0")}m`;
   const lending: Metric[] = [
-    { id: "margin-calls", node: { fig: "d4", id: "ln" }, label: "Margin calls cured, last week", value: `${mw.cured} of ${mw.calls}`,
-      note: `Maple-reported. ${mw.liquidations} liquidations. Average time to cure ${hm(mw.cure_hours)} against a 24-hour cure period. Bars: collateral borrowers added that week.`,
-      chart: { kind: "bars", data: marginRows, x: "week", ys: ["required_usd", "above_required_usd", "unrequested_usd"] } },
+    { id: "margin-calls", node: { fig: "d4", id: "ln" }, label: "Loans in margin call", value: `${n(md?.in_call)} of ${n(md?.loans)}`,
+      note: `A loan is in margin call when its collateral ÷ loan falls below the call level in its terms. Read hourly from Maple's API since ${sinceLong}: ${calls} calls seen, ${cured.length} cured${isFinite(cureH) ? `, ${hm(cureH)} on average` : ""}.`,
+      chart: { kind: "bars", data: mDaily, x: "day", ys: ["in_call", "calls", "cured"], fmt: "int" } },
     { id: "lender-yield", node: { fig: "d4", id: "p" }, label: "Lender yield, syrupUSDC", value: fmtPct(n(pools.find((x) => x.pool === "syrupUSDC")?.lender_yield)),
       note: "What lenders earn: each pool token's share-price growth over the last 30 days, annualised.", chart: { kind: "line", data: yieldW, x: "day", ys: POOLS } },
     { id: "borrow-rate", node: { fig: "d4", id: "ln" }, label: "Borrower rate, open loans", value: fmtPct(bookRate),
@@ -190,7 +196,7 @@ export default async function BusinessPage() {
       note: "USDG paid out per syrupUSDG. It rises as interest builds up.", chart: { kind: "line", data: pool, x: "day", ys: ["exch_rate"], fmt: "rate" } },
   ];
   const sections = [
-    { id: "revenue-sec", label: "Revenue" }, { id: "lending-sec", label: "Lending" },
+    { id: "revenue-sec", label: "Revenue" }, { id: "lending-sec", label: "Lending" }, { id: "collateral-sec", label: "Collateral" },
     { id: "pools-sec", label: "Pools and loans" }, { id: "people-sec", label: "Lenders and borrowers" }, { id: "robinhood-sec", label: "Robinhood" }, { id: "data", label: "Data and method" },
   ];
 
@@ -218,11 +224,25 @@ export default async function BusinessPage() {
           <h2 className="blk-t">Lending</h2>
           <Linked label="Lending" metrics={lending} figs={[{ id: "d4", title: "How a Maple pool is built", lede: "Every pool repeats the same set of contracts. Fees go to the treasury and the pool delegate inside each loan payment.", source: "Maple docs, smart contract architecture; Maple address registry" }]} aside={
             <dl className="facts">
-              <div><dt>Margin calls, week to {mw.week.slice(8, 10).replace(/^0/, "")} {MON3[Number(mw.week.slice(5, 7)) - 1]}</dt><dd>{mw.calls}, {mw.cured === mw.calls ? "all cured" : `${mw.cured} cured`}</dd></div>
-              <div><dt>Liquidations</dt><dd>{mw.liquidations}</dd></div>
-              <div><dt>Average time to cure</dt><dd>{hm(mw.cure_hours)}</dd></div>
-              <div><dt>Collateral added</dt><dd>{fmtUsd(mw.collateral_usd + mw.unrequested_usd)}</dd></div>
+              <div><dt>In margin call now</dt><dd>{n(md?.in_call)} of {n(md?.loans)} loans</dd></div>
+              <div><dt>BTC fall to first margin call</dt><dd>{btc ? fmtPct(n(btc.drop_to_call)) : "–"}</dd></div>
+              <div><dt>BTC fall to first liquidation</dt><dd>{btc ? fmtPct(n(btc.drop_to_liq)) : "–"}</dd></div>
             </dl>} />
+        </section>
+
+        <section id="collateral-sec" className="blk">
+          <h2 className="blk-t">Collateral and margin calls</h2>
+          <Panel title="Collateral by asset" sub="Open loans today. Fall to call / liquidation: how far the asset's price has to drop before the first loan backed by it is called / reaches its liquidation level.">
+            <Table rows={byAsset} cols={[{ key: "asset", title: "collateral" }, { key: "loans", title: "loans", fmt: "int" }, { key: "principal_usd", title: "lent", fmt: "usd" },
+              { key: "collateral_usd", title: "collateral", fmt: "usd" }, { key: "cover", title: "cover", fmt: "pct" }, { key: "in_call", title: "in call", fmt: "int" },
+              { key: "drop_to_call", title: "fall to call", fmt: "pct" }, { key: "drop_to_liq", title: "fall to liquidation", fmt: "pct" }]} />
+          </Panel>
+          {mEvents.length > 0 && <Panel title="Margin call log" sub="Latest first. Calls, cures and collateral top-ups, read hourly.">
+            <Table rows={mEvents.slice(0, 30).map((x) => ({ ...x, ts: String(x.ts).slice(0, 16).replace("T", " "), kind: String(x.kind).replace("_", " ") }))} cols={[
+              { key: "ts", title: "time (UTC)" }, { key: "kind", title: "event" }, { key: "pool", title: "pool" }, { key: "asset", title: "collateral" },
+              { key: "principal_usd", title: "loan", fmt: "usd" }, { key: "level", title: "level", fmt: "pct" }, { key: "call_level", title: "call level", fmt: "pct" },
+              { key: "usd", title: "added", fmt: "usd" }, { key: "hours", title: "hours to cure", fmt: "raw" }]} />
+          </Panel>}
         </section>
 
         <section id="pools-sec" className="blk">
@@ -305,7 +325,7 @@ export default async function BusinessPage() {
             <p><span className="text-ink-2">Revenue.</span> syrupUSD = fees from the syrupUSDC, syrupUSDT and syrupUSDG loan managers and their Aave/Sky strategies. Other pools = fees from every other Maple pool. Both onchain: open-term <code>ClaimedFundsDistributed</code>, fixed-term <code>ManagementFeesPaid</code> / <code>ServiceFeesPaid</code> / <code>OriginationFeesPaid</code>, strategy <code>StrategyFeesCollected</code>; WETH pools excluded. They match DeFiLlama&apos;s Maple onchain revenue within 0.3% a month. Offchain = Maple&apos;s reported total minus onchain fees. In Sep–Oct 2026 onchain fees were above Maple&apos;s total, so offchain shows as a gap for those months.</p>
             <p><span className="text-ink-2">Loans.</span> <code>principalOut()</code> of every USD loan manager at each month-end.</p>
             <p><span className="text-ink-2">Lenders and borrowers.</span> Lenders = distinct share recipients of ERC-4626 <code>Deposit</code> on every USD pool. Borrowers = <code>loan.borrower()</code> for every loan that made a payment.</p>
-            <p><span className="text-ink-2">Margin calls.</span> Maple-reported, from its weekly updates on X; not visible onchain because collateral sits with custodians. &ldquo;Collateral added&rdquo; is collateral posted against calls plus top-ups from borrowers who were not called.</p>
+            <p><span className="text-ink-2">Margin calls.</span> From Maple&apos;s public API (api.maple.finance), read every hour since {sinceLong}. Each open loan lists its collateral (asset, amount, price) and three levels from its terms, as collateral ÷ loan: initial, margin call and liquidation. A call is counted when a loan drops below its call level and cured when it is back above. Maple&apos;s own call history needs a borrower login, and none of this is onchain: collateral sits with custodians, and no Maple open-term loan has ever emitted a call, impairment or repossession event. Calls opened and cured inside the same hour are missed. Maple posts its own weekly count on X (26 calls, all cured, week to 16 Nov 2026).</p>
             <p><span className="text-ink-2">Margins.</span> Interest paid, Maple&apos;s cut and net interest margin are Maple-reported. From onchain open-term loans alone: interest {fmtUsd(ttmGross)}, cut {fmtPct(ttmRev / (ttmGross || 1))}, revenue ÷ average pool assets {fmtPct(ttmRev / (ttmAssets || 1))}.</p>
           </div>
         </section>

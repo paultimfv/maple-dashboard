@@ -69,7 +69,7 @@ function colorsFor(pal: Pal, keys: string[]) {
 
 /* readable names for column keys; anything unlisted falls back to "snake case → words" */
 const LABELS: Record<string, string> = {
-  required_usd: "Required by the calls", above_required_usd: "Posted above the call", unrequested_usd: "Top-ups, not called",
+  in_call: "In margin call", calls: "New calls", cured: "Cured",
   spot_volume_usd: "Spot", perp_volume_usd: "Perpetuals", open_interest_usd: "Open interest", depth_up_usd: "+2%", depth_down_usd: "−2%", dex_liquidity_usd: "DEX liquidity",
   syrup_revenue: "syrupUSD", pool_revenue: "Other pools", offchain_revenue: "Offchain", loans_syrupusdc: "syrupUSDC", loans_syrupusdt: "syrupUSDT",
   loans_syrupusdg: "syrupUSDG", loans_other: "Other pools", loans_total: "Loans outstanding", deposits_total: "Deposits",

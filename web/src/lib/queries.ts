@@ -244,6 +244,29 @@ export async function syrupPrice() {
   const rows = await q(`SELECT day, price_usd, mcap_usd, volume_usd FROM syrup_price ORDER BY day`);
   return rows.map(num);
 }
+// ---- Margin calls (pipeline fetch_collateral.py: Maple's public API, hourly; each loan's collateral ÷ principal vs its margin call level) ----
+/** loans today by collateral asset: principal, collateral, and the price drop that sets off the first margin call / liquidation */
+export async function collateralByAsset() {
+  const rows = await q(`SELECT asset, count(*) AS loans, sum(principal_usd) AS principal_usd, sum(collateral_usd) AS collateral_usd,
+      sum(collateral_usd) / nullif(sum(principal_usd), 0) AS cover, count(*) FILTER (WHERE in_call) AS in_call,
+      min(1 - call_level / nullif(level, 0)) AS drop_to_call, min(1 - liq_level / nullif(level, 0)) AS drop_to_liq
+    FROM loan_collateral GROUP BY asset ORDER BY principal_usd DESC`);
+  return rows.map(num);
+}
+/** per day: loans in margin call, and calls / cures / top-ups seen that day */
+export async function marginDaily() {
+  const rows = await q(`SELECT d.day, d.loans, d.in_call, coalesce(e.calls, 0) AS calls, coalesce(e.cured, 0) AS cured,
+      coalesce(e.topup_usd, 0) AS topup_usd, e.avg_hours
+    FROM (SELECT day, count(*) AS loans, count(*) FILTER (WHERE in_call) AS in_call FROM loan_collateral_daily GROUP BY day) d
+    LEFT JOIN (SELECT ts::date AS day, count(*) FILTER (WHERE kind = 'call') AS calls, count(*) FILTER (WHERE kind = 'cured') AS cured,
+      sum(usd) FILTER (WHERE kind = 'top_up') AS topup_usd, avg(hours) FILTER (WHERE kind = 'cured') AS avg_hours FROM margin_events GROUP BY 1) e ON e.day = d.day
+    ORDER BY d.day`);
+  return rows.map(num);
+}
+export async function marginEvents() {
+  const rows = await q(`SELECT ts, kind, pool, asset, principal_usd, level, call_level, usd, hours FROM margin_events ORDER BY ts DESC LIMIT 200`);
+  return rows.map(num);
+}
 /** exchanges whose order books count toward headline depth; small venues report depth far above their own volume */
 const MAJOR = ["Binance", "Coinbase Exchange", "Upbit", "Bitvavo", "Kraken", "Bitstamp by Robinhood", "KuCoin", "Bitget", "Gate", "OKX", "Bybit", "Bithumb", "MEXC", "Crypto.com Exchange", "HTX"];
 /** SYRUP markets, one row a day (pipeline: syrup_venues): spot depth ±2% on major exchanges, perp open interest and volume, DEX liquidity */
