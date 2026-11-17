@@ -18,6 +18,7 @@ export async function GET() {
     Q.poolTable(), Q.lenderYield(), Q.collateralCover(), Q.lenderFlows(), Q.loanBook(), Q.syrupHolders(), Q.syrupStaked(), Q.treasuryDaily(),
   ]);
   const [mkts, venues, byAsset, mDaily, mEvents] = await Promise.all([Q.syrupMarkets(), Q.syrupVenues(), Q.collateralByAsset(), Q.marginDaily(), Q.marginEvents()]);
+  const [liqSrc, liqInt, wq] = await Promise.all([Q.liquiditySources(), Q.liquidityInterest(), Q.poolWithdrawals()]);
   const [yb, ethLend, llamaLend, cgYb, mapleBook] = await Promise.all([Q.yieldBearing(), Q.ethLending(), Q.llamaLending(), Q.cgYieldBearing(), Q.mapleBookDaily()]);
   /* take rate = Maple's cut of the interest on its loans: onchain fees x 12 / loans outstanding at month end */
   const take = ledger.filter((x) => !x.partial_month && x.loans_total && x.onchain_revenue != null)
@@ -32,6 +33,9 @@ Definitions: revenue = syrupUSD (syrupUSDC/USDT/USDG loan managers + strategies)
     table("SYRUP markets, daily snapshot: spot and perpetuals 24h volume, perp open interest, order book depth to move price +2%/-2% on major exchanges, DEX pool liquidity (CoinGecko, GeckoTerminal)", mkts),
     table("SYRUP venues today: 24h volume, ±2% depth, spread, open interest, DEX liquidity", venues, { max: 60 }),
     table("Open loans by collateral asset today (Maple API): loans, principal, collateral, cover, loans in margin call, price fall to first margin call and to first liquidation", byAsset),
+    table("Pool liquidity now (Maple API, hourly): each syrup pool's sources fastest first, with time window, amount, running total and running share of the pool", liqSrc),
+    table("Interest borrowers owe on top of pool liquidity, per pool and window (Maple API)", liqInt),
+    table("Withdrawal queue per pool (Maple API): pending, withdrawals processed in 12 months, median minutes, counts within 24h/3d/7d/14d", wq),
     table("Margin calls per day, tracked hourly from Maple's API (loan below its margin call level): loans, in call, calls, cured, top-ups USD, average hours to cure", mDaily),
     table("Margin call log (calls, cures, collateral top-ups)", mEvents, { max: 100 }),
     table("SYRUP supply", supply.slice(-30)),

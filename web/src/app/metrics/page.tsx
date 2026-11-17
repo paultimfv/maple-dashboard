@@ -1,4 +1,4 @@
-import { rhAum, earnAllocation, earnShare, interestWeekly, loansWeekly, shareOfUsdg, poolState, utilization, topLoans, syrupPrice, syrupBuybacks, revenueBridge, capitalOnChain, holders, mapleRevenueMonthly, mapleModelMonthly, mapleAumByPool, mapleAumLatest, syrupSupply, mapleAumReported, poolsSnapshot, mapleLenders, mapleBorrowers, ssfDaily, mapleBalanceSheet, mapleKpis, poolTable, lenderYield, collateralCover, lenderFlows, loanBook, syrupHolders, treasuryDaily, collateralByAsset, marginDaily, marginEvents } from "@/lib/queries";
+import { rhAum, earnAllocation, earnShare, interestWeekly, loansWeekly, shareOfUsdg, poolState, utilization, topLoans, syrupPrice, syrupBuybacks, revenueBridge, capitalOnChain, holders, mapleRevenueMonthly, mapleModelMonthly, mapleAumByPool, mapleAumLatest, syrupSupply, mapleAumReported, poolsSnapshot, mapleLenders, mapleBorrowers, ssfDaily, mapleBalanceSheet, mapleKpis, poolTable, lenderYield, collateralCover, lenderFlows, loanBook, syrupHolders, treasuryDaily, collateralByAsset, marginDaily, marginEvents, liquiditySources, liquidityDaily, liquidityInterest, poolWithdrawals } from "@/lib/queries";
 import { Panel, Table } from "@/components/charts";
 import { Explorer, Linked, Rail, type Metric } from "@/components/explorer";
 import { fmtUsd, fmtPct } from "@/lib/fmt";
@@ -145,6 +145,33 @@ export default async function BusinessPage() {
       note: "Interest borrowers paid on open-term loans. Change compares the last 12 months with the 12 before.", chart: { kind: "bars", data: borrowers, x: "month", ys: ["interest_paid_usd"] } },
   ];
   const [byAsset, mDaily, mEvents] = await Promise.all([collateralByAsset(), marginDaily(), marginEvents()]);
+  const [liqSrc, liqDaily, liqInt, wd] = await Promise.all([liquiditySources(), liquidityDaily(), liquidityInterest(), poolWithdrawals()]);
+  const WL: Record<string, string> = { instant: "Instant", "24h": "<24 hours", "3d": "<3 days", "7d": "<7 days", "30d": "<30 days", "30d+": "30+ days" };
+  const WINS = ["instant", "24h", "3d", "7d", "30d", "30d+"];
+  /** what a pool can return within window w (1 = instant … 6 = 30+ days): the running total of its sources up to that window */
+  const within = (pool: string, w: number, rows = liqSrc) => Math.max(0, ...rows.filter((x) => x.pool === pool && n(x.window_order) <= w).map((x) => n(x.cumulative_usd)));
+  const liqPools = POOLS.filter((p) => liqSrc.some((x) => x.pool === p));
+  const liqTotal = wd.reduce((t, x) => t + n(x.total_assets_usd), 0);
+  const liqAt = (w: number) => liqPools.reduce((t, p) => t + within(p, w), 0);
+  const liqDays = new Set(liqDaily.map((x) => String(x.day).slice(0, 10))).size;
+  const liq24Hist = wide([...liqDaily.filter((x) => n(x.window_order) <= 2).reduce((m, x) => { const k = `${String(x.day).slice(0, 10)}|${x.pool}`; const o = m.get(k); if (!o || n(x.window_order) > n(o.window_order)) m.set(k, x); return m; }, new Map<string, Record<string, unknown>>()).values()].map((x) => x), "cumulative_pct");
+  const wdTot = wd.reduce((t, x) => t + n(x.processed_12m), 0), wd24 = wd.reduce((t, x) => t + n(x.within_24h), 0);
+  const intDue30 = liqPools.reduce((t, p) => t + Math.max(0, ...liqInt.filter((x) => x.pool === p && n(x.window_order) <= 5).map((x) => n(x.cumulative_usd))), 0);
+  const srcGroup = (x: Record<string, unknown>) => String(x.category) === "overcollateralizedLending" ? "Loans" : String(x.name);
+  const liquidity: Metric[] = liqSrc.length ? [
+    { id: "liq-24h", label: "Available within 24 hours", value: fmtUsd(liqAt(2)),
+      note: `${fmtPct(liqAt(2) / (liqTotal || 1))} of syrup deposits could come back to the pools within a day: idle cash, DeFi and DEX positions, and loans due to be called or mature. Maple's API, read hourly.${liqDays >= 14 ? " Chart: share of each pool available within 24 hours." : " Chart: what each pool can return by time window today; daily history builds from here."}`,
+      chart: liqDays >= 14 ? { kind: "line", data: liq24Hist, x: "day", ys: liqPools, fmt: "pct" }
+        : { kind: "columns", data: WINS.flatMap((w, i) => liqPools.map((p) => ({ window: WL[w], pool: p, available_usd: within(p, i + 1) }))), x: "window", y: "available_usd", group: "pool" } },
+    { id: "liq-instant", label: "Available instantly", value: fmtUsd(liqAt(1)),
+      note: `${fmtPct(liqAt(1) / (liqTotal || 1))} of deposits, from idle cash in the pool contracts plus DeFi and DEX positions that can be pulled straight away. Chart: all three pools by window and source; each window's bar is only what frees up in that window.`,
+      chart: { kind: "columns", data: liqSrc.map((x) => ({ window: WL[String(x.window_name)] ?? x.window_name, source: srcGroup(x), freed_usd: x.amount_usd, o: n(x.window_order) })).sort((a, b) => a.o - b.o), x: "window", y: "freed_usd", group: "source" } },
+    { id: "liq-withdrawals", label: "Withdrawals paid within 24h", value: fmtPct(wd24 / (wdTot || 1)),
+      note: `${wd24.toLocaleString()} of ${wdTot.toLocaleString()} withdrawals over the last 12 months were processed within 24 hours. Chart: withdrawals by how long they took, per pool.`,
+      chart: { kind: "columns", fmt: "int", x: "pool", y: "withdrawals", group: "took", data: wd.flatMap((x) => [
+        ["under 24h", n(x.within_24h)], ["1–3 days", n(x.within_3d) - n(x.within_24h)], ["3–7 days", n(x.within_7d) - n(x.within_3d)],
+        ["7–14 days", n(x.within_14d) - n(x.within_7d)], ["14+ days", n(x.processed_12m) - n(x.within_14d)]].map(([took, v]) => ({ pool: x.pool, took, withdrawals: v }))) } },
+  ] : [];
   const md = last(mDaily);
   const since = String(mDaily[0]?.day ?? "").slice(0, 10);
   const sinceLong = since ? `${Number(since.slice(8, 10))} ${MON3[Number(since.slice(5, 7)) - 1]} ${since.slice(0, 4)}` : "";
@@ -197,7 +224,7 @@ export default async function BusinessPage() {
       note: "USDG paid out per syrupUSDG. It rises as interest builds up.", chart: { kind: "line", data: pool, x: "day", ys: ["exch_rate"], fmt: "rate" } },
   ];
   const sections = [
-    { id: "revenue-sec", label: "Revenue" }, { id: "lending-sec", label: "Lending" }, { id: "collateral-sec", label: "Collateral" },
+    { id: "revenue-sec", label: "Revenue" }, { id: "lending-sec", label: "Lending" }, { id: "liquidity-sec", label: "Liquidity" }, { id: "collateral-sec", label: "Collateral" },
     { id: "pools-sec", label: "Pools and loans" }, { id: "people-sec", label: "Lenders and borrowers" }, { id: "robinhood-sec", label: "Robinhood" }, { id: "data", label: "Data and method" },
   ];
 
@@ -230,6 +257,21 @@ export default async function BusinessPage() {
               <div><dt>BTC fall to first liquidation</dt><dd>{btc ? fmtPct(n(btc.drop_to_liq)) : "–"}</dd></div>
             </dl>} />
         </section>
+
+        {liquidity.length > 0 && <section id="liquidity-sec" className="blk">
+          <h2 className="blk-t">Liquidity</h2>
+          <p className="blk-l">How much of each syrup pool could come back, and how fast. A snapshot, not a promise of withdrawal timing.</p>
+          <Explorer label="Liquidity" metrics={liquidity} aside={
+            <dl className="facts">
+              <div><dt>Withdrawals waiting now</dt><dd>{fmtUsd(wd.reduce((t, x) => t + n(x.pending_usd), 0))}</dd></div>
+              <div><dt>Median wait, syrupUSDC</dt><dd>{(() => { const m = n(wd.find((x) => x.pool === "syrupUSDC")?.median_minutes); return m < 90 ? `${m.toFixed(0)} min` : `${(m / 60).toFixed(1)} h`; })()}</dd></div>
+              <div><dt>Interest due within 30 days</dt><dd>{fmtUsd(intDue30)}</dd></div>
+            </dl>} />
+          <Panel title="Liquidity by source" sub={`Maple API, ${String(liqSrc[0]?.ts ?? "").slice(0, 16).replace("T", " ")} UTC. Fastest first; amounts include accrued interest.`}>
+            <Table rows={liqSrc.map((x) => ({ ...x, when: x.timing ?? WL[String(x.window_name)] }))} cols={[{ key: "pool", title: "pool" }, { key: "name", title: "source" }, { key: "detail", title: "held in" },
+              { key: "when", title: "timing" }, { key: "amount_usd", title: "amount", fmt: "usd" }, { key: "cumulative_usd", title: "cumulative", fmt: "usd" }, { key: "cumulative_pct", title: "of pool", fmt: "pct" }]} />
+          </Panel>
+        </section>}
 
         <section id="collateral-sec" className="blk">
           <h2 className="blk-t">Collateral and margin calls</h2>

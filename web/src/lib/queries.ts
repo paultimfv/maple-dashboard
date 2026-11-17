@@ -267,6 +267,30 @@ export async function marginEvents() {
   const rows = await q(`SELECT ts, kind, pool, asset, principal_usd, level, call_level, usd, hours FROM margin_events ORDER BY ts DESC LIMIT 200`);
   return rows.map(num);
 }
+// ---- Pool liquidity (pipeline fetch_liquidity.py: Maple's public API PoolV2.liquidity, hourly) ----
+const LIQ_TS = `(SELECT max(ts) FROM pool_liquidity)`;
+/** latest snapshot: every source row per pool, fastest first */
+export async function liquiditySources() {
+  const rows = await q(`SELECT ts, pool, ord, category, name, detail, timing, window_name, window_order, loan_count, amount_usd, cumulative_usd, pct, cumulative_pct
+    FROM pool_liquidity WHERE ts = ${LIQ_TS} ORDER BY pool, ord`);
+  return rows.map(num);
+}
+/** per hour-snapshot (last of each day), pool and window: cumulative amount available within that window */
+export async function liquidityDaily() {
+  const rows = await q(`WITH last AS (SELECT ts::date AS day, max(ts) AS ts FROM pool_liquidity GROUP BY 1)
+    SELECT l.day, p.pool, p.window_order, p.window_name, max(p.cumulative_usd) AS cumulative_usd, max(p.cumulative_pct) AS cumulative_pct
+    FROM pool_liquidity p JOIN last l ON l.ts = p.ts GROUP BY 1, 2, 3, 4 ORDER BY 1, 2, 3`);
+  return rows.map(num);
+}
+export async function liquidityInterest() {
+  const rows = await q(`SELECT pool, window_name, window_order, loan_count, amount_usd, cumulative_usd FROM pool_liquidity_interest
+    WHERE ts = (SELECT max(ts) FROM pool_liquidity_interest) ORDER BY pool, window_order`);
+  return rows.map(num);
+}
+export async function poolWithdrawals() {
+  const rows = await q(`SELECT * FROM pool_withdrawal_queue WHERE ts = (SELECT max(ts) FROM pool_withdrawal_queue) ORDER BY pool`);
+  return rows.map(num);
+}
 /** exchanges whose order books count toward headline depth; small venues report depth far above their own volume */
 export const MAJOR = ["Binance", "Coinbase Exchange", "Upbit", "Bitvavo", "Kraken", "Bitstamp by Robinhood", "KuCoin", "Bitget", "Gate", "OKX", "Bybit", "Bithumb", "MEXC", "Crypto.com Exchange", "HTX"];
 /** SYRUP markets, one row a day (pipeline: syrup_venues): spot depth ±2% on major exchanges, perp open interest and volume, DEX liquidity */
