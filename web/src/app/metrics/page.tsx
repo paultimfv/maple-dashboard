@@ -267,7 +267,7 @@ export default async function BusinessPage() {
               <div><dt>Median wait, syrupUSDC</dt><dd>{(() => { const m = n(wd.find((x) => x.pool === "syrupUSDC")?.median_minutes); return m < 90 ? `${m.toFixed(0)} min` : `${(m / 60).toFixed(1)} h`; })()}</dd></div>
               <div><dt>Interest due within 30 days</dt><dd>{fmtUsd(intDue30)}</dd></div>
             </dl>} />
-          <Panel title="Liquidity by source" sub={`Maple API, ${String(liqSrc[0]?.ts ?? "").slice(0, 16).replace("T", " ")} UTC. Fastest first; amounts include accrued interest.`}>
+          <Panel title="Liquidity by source" sub={`Maple API, ${String(liqSrc[0]?.ts ?? "").slice(0, 10)}, refreshed hourly. Fastest first; amounts include accrued interest.`}>
             <Table rows={liqSrc.map((x) => ({ ...x, when: x.timing ?? WL[String(x.window_name)] }))} cols={[{ key: "pool", title: "pool" }, { key: "name", title: "source" }, { key: "detail", title: "held in" },
               { key: "when", title: "timing" }, { key: "amount_usd", title: "amount", fmt: "usd" }, { key: "cumulative_usd", title: "cumulative", fmt: "usd" }, { key: "cumulative_pct", title: "of pool", fmt: "pct" }]} />
           </Panel>
