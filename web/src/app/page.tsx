@@ -1,4 +1,4 @@
-import { syrupPrice, syrupBuybacks, mapleModelMonthly, mapleAumReported, mapleRevenueMonthly, utilization, earnShare, stablecoinSupplyGlobal, syrupMarkets, marginDaily, syrupVenues, collateralByAsset } from "@/lib/queries";
+import { syrupPrice, syrupBuybacks, mapleModelMonthly, mapleAumReported, mapleRevenueMonthly, utilization, earnShare, stablecoinSupplyGlobal, syrupMarkets, marginDaily, syrupVenues, collateralByAsset, syrupMarketHistory } from "@/lib/queries";
 import { Explorer, type Metric } from "@/components/explorer";
 import { Diagrams } from "@/components/exhibit";
 import { Mini } from "@/components/mini";
@@ -26,7 +26,8 @@ export default async function Home() {
   ]);
   const [mkts, mDaily, venues, byAsset] = await Promise.all([syrupMarkets(), marginDaily(), syrupVenues(), collateralByAsset()]); const mk = last(mkts), md = last(mDaily);
   /* daily snapshots start 16 Nov 2026: until there are two weeks, show today's split (open interest by venue, loans by collateral) */
-  const oiData = mkts.length >= 14 ? mkts : venues.filter((x) => x.kind === "perp").slice(0, 12).sort((a, b) => n(b.oi_usd) - n(a.oi_usd));
+  const oiH = await syrupMarketHistory("oi_usd"); void venues;
+  const oiData = [...oiH.reduce((m, r) => m.set(String(r.day), (m.get(String(r.day)) ?? 0) + n(r.value)), new Map<string, number>())].map(([day, oi]) => ({ day, oi }));
   const mcData = mDaily.length >= 14 ? mDaily : byAsset;
   const sp = last(syrup), ar = last(aumRep), r = last(rev), u = last(util), sh = last(share), sg = last(stable), bb = last(buybacks);
   const ttm = [...model].reverse().find((x) => x.ttm_revenue != null);
@@ -75,7 +76,7 @@ export default async function Home() {
             <Mini href="/metrics#utilization" where="Key business metrics" label="syrupUSDG lent out" value={fmtPct(n(u?.utilization))} data={util} x="day" y="utilization" />
             <Mini href="/metrics#earn-share" where="Key business metrics" tone="rh" label="syrupUSDG share of Robinhood Earn" value={fmtPct(n(sh?.maple_share_of_earn))} data={share} x="day" y="maple_share_of_earn" />
             <Mini href="/syrup#volume" where="SYRUP" label="SYRUP spot volume, 24h" value={fmtUsd(n(sp?.volume_usd))} data={syrup.slice(-90)} x="day" y="volume_usd" kind="bars" />
-            <Mini href="/syrup#oi" where="SYRUP" label="SYRUP open interest" value={fmtUsd(n(mk?.open_interest_usd))} data={oiData} x={mkts.length >= 14 ? "day" : "venue"} y={mkts.length >= 14 ? "open_interest_usd" : "oi_usd"} kind={mkts.length >= 14 ? "line" : "bars"} />
+            <Mini href="/syrup#oi" where="SYRUP" label="SYRUP open interest" value={fmtUsd(n(mk?.open_interest_usd))} data={oiData.slice(-365)} x="day" y="oi" />
             <Mini href="/metrics#margin-calls" where="Key business metrics" label="Loans in margin call" value={`${n(md?.in_call)} of ${n(md?.loans)}`} data={mcData} x={mDaily.length >= 14 ? "day" : "asset"} y={mDaily.length >= 14 ? "in_call" : "principal_usd"} kind="bars" />
             <Mini href="/macro#stablecoins" where="Growth drivers" label="Stablecoins, all chains" value={fmtUsd(n(sg?.supply_usd))} change={yearAgo(stable, "day", "supply_usd")} data={stable} x="day" y="supply_usd" />
           </div>

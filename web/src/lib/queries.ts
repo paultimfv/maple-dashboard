@@ -281,6 +281,14 @@ export async function syrupMarkets() {
     FROM syrup_venues GROUP BY day ORDER BY day`, [MAJOR]);
   return rows.map(num);
 }
+/** SYRUP history by venue: perp open interest and volume, DEX pool liquidity (pipeline fetch_market_history.py), long rows,
+ *  cut to the last day every source has reported (Binance's archive lands a day late) */
+export async function syrupMarketHistory(metric: "oi_usd" | "perp_volume_usd" | "dex_liquidity_usd") {
+  const rows = await q(`WITH h AS (SELECT * FROM syrup_market_history WHERE metric = $1)
+    SELECT day, source, value FROM h WHERE day <= (SELECT min(m) FROM (SELECT max(day) AS m FROM h GROUP BY source HAVING max(day) > now() - interval '7 days') x)
+    ORDER BY day, source`, [metric]);
+  return rows.map(num);
+}
 /** SYRUP venues today, one row per exchange (pairs summed), largest volume first */
 export async function syrupVenues() {
   const rows = await q(`SELECT venue, kind, string_agg(DISTINCT pair, ', ') AS pairs, sum(volume_usd) AS volume_usd, sum(depth_up_usd) AS depth_up_usd, sum(depth_down_usd) AS depth_down_usd,

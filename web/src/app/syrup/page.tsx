@@ -1,4 +1,4 @@
-import { syrupPrice, syrupBuybacks, syrupSupply, ssfDaily, mapleBalanceSheet, mapleModelMonthly, syrupHolders, syrupStaked, syrupMarkets, syrupVenues, MAJOR } from "@/lib/queries";
+import { syrupPrice, syrupBuybacks, syrupSupply, ssfDaily, mapleBalanceSheet, mapleModelMonthly, syrupHolders, syrupStaked, syrupMarkets, syrupVenues, syrupMarketHistory, MAJOR } from "@/lib/queries";
 import { Panel, Table } from "@/components/charts";
 import { Explorer, Linked, Rail, type Metric } from "@/components/explorer";
 import Model from "@/components/model";
@@ -17,6 +17,12 @@ export default async function SyrupPage() {
   ]);
   const [holders, staked, mkts, venues] = await Promise.all([syrupHolders(), syrupStaked(), syrupMarkets(), syrupVenues()]);
   const mk = last(mkts);
+  const [oiH, pvH, dexH] = await Promise.all([syrupMarketHistory("oi_usd"), syrupMarketHistory("perp_volume_usd"), syrupMarketHistory("dex_liquidity_usd")]);
+  const lastDay = (rows: Record<string, unknown>[]) => { const d = String(last(rows)?.day ?? ""); return rows.filter((x) => String(x.day) === d); };
+  const sumLast = (rows: Record<string, unknown>[]) => lastDay(rows).reduce((t, x) => t + n(x.value), 0);
+  const perpOf = (src: string, k: "oi_usd" | "volume_usd") => venues.filter((x) => x.kind === "perp" && String(x.venue).startsWith(src)).reduce((t, x) => t + n(x[k]), 0);
+  const oiCover = (perpOf("Binance", "oi_usd") + perpOf("OKX", "oi_usd")) / n(mk?.open_interest_usd || 1);
+  const pvCover = ["Binance", "OKX", "Hyperliquid", "Bitget"].reduce((t, v) => t + perpOf(v, "volume_usd"), 0) / n(mk?.perp_volume_usd || 1);
   const st = last(staked);
   const top = holders.filter((x) => x.token === "SYRUP");
   const byKind = (() => { const m = new Map<string, number>(); for (const h of top) m.set(String(h.kind), (m.get(String(h.kind)) ?? 0) + n(h.balance));
@@ -60,23 +66,22 @@ export default async function SyrupPage() {
     const rest = s.slice(k); if (rest.length) head.push({ venue: `${rest.length} others`, ...Object.fromEntries(keys.map((x) => [x, rest.reduce((t, r) => t + n(r[x]), 0)])) });
     return head;
   };
-  const perps = venues.filter((x) => x.kind === "perp"), spot = venues.filter((x) => x.kind === "spot" && MAJOR.includes(String(x.venue))), pools = venues.filter((x) => x.kind === "pool");
-  const byVenue = " By venue today; a daily history starts 16 Nov 2026.";
+  const spot = venues.filter((x) => x.kind === "spot" && MAJOR.includes(String(x.venue)));
   const market: Metric[] = [
     { id: "volume", label: "Spot volume, 24h", value: fmtUsd(n(sp?.volume_usd)), change: (() => { const a = syrup.slice(-395, -335); const v = a.reduce((t, x) => t + n(x.volume_usd), 0) / Math.max(1, a.length); return v ? vol30 / v - 1 : NaN; })(),
       note: `Spot trading across all exchanges, daily, from CoinGecko. 30-day average ${fmtUsd(vol30)}. Change compares 30-day averages a year apart.`, chart: { kind: "bars", data: syrup, x: "day", ys: ["volume_usd"] } },
     { id: "oi", label: "Open interest, perpetuals", value: fmtUsd(n(mk?.open_interest_usd)),
-      note: `Open perpetual futures positions, all venues CoinGecko tracks.${hist ? " Daily." : byVenue}`,
-      chart: hist ? { kind: "line", data: mkts, x: "day", ys: ["open_interest_usd"], fmt: "usd" } : { kind: "bars", data: topN(perps, ["oi_usd"]), x: "venue", ys: ["oi_usd"] } },
+      note: `All venues CoinGecko tracks, today. The chart is Binance and OKX, the two venues that publish open interest history for free (${fmtPct(oiCover)} of today's total); Bybit, Hyperliquid and the rest only from 16 Nov 2026.`,
+      chart: { kind: "columns", data: oiH, x: "day", y: "value", group: "source" } },
     { id: "perp-volume", label: "Perpetuals volume, 24h", value: fmtUsd(n(mk?.perp_volume_usd)),
-      note: `Perpetual futures traded in the last 24 hours, all venues.${hist ? " Daily, against spot." : byVenue}`,
-      chart: hist ? { kind: "bars", data: mkts, x: "day", ys: ["spot_volume_usd", "perp_volume_usd"] } : { kind: "bars", data: topN(perps, ["volume_usd"]), x: "venue", ys: ["volume_usd"] } },
+      note: `All venues CoinGecko tracks, today. The chart is daily volume on Binance, OKX, Bitget and Hyperliquid (${fmtPct(pvCover)} of today's total), from each venue's public candles.`,
+      chart: { kind: "columns", data: pvH, x: "day", y: "value", group: "source" } },
     { id: "depth", label: "Order book depth, ±2%", value: `${fmtUsd(n(mk?.depth_up_usd))} / ${fmtUsd(n(mk?.depth_down_usd))}`,
-      note: `Dollars it takes to move the price 2% up / 2% down, summed over the spot books on major exchanges.${hist ? " Daily." : byVenue}`,
+      note: `Dollars it takes to move the price 2% up / 2% down, summed over the spot books on major exchanges.${hist ? " Daily." : " By exchange today. No free source keeps order book history, so the daily series starts 16 Nov 2026."}`,
       chart: hist ? { kind: "line", data: mkts, x: "day", ys: ["depth_up_usd", "depth_down_usd"], fmt: "usd" } : { kind: "bars", data: topN(spot, ["depth_down_usd", "depth_up_usd"]), x: "venue", ys: ["depth_up_usd", "depth_down_usd"] } },
-    { id: "dex", label: "DEX liquidity", value: fmtUsd(n(mk?.dex_liquidity_usd)),
-      note: `Assets in SYRUP pools on Ethereum DEXs, from GeckoTerminal.${hist ? " Daily." : " By pool today; a daily history starts 16 Nov 2026."}`,
-      chart: hist ? { kind: "line", data: mkts, x: "day", ys: ["dex_liquidity_usd"], fmt: "usd" } : { kind: "bars", data: topN(pools, ["liquidity_usd"], 5), x: "venue", ys: ["liquidity_usd"] } },
+    { id: "dex", label: "DEX liquidity", value: fmtUsd(sumLast(dexH)),
+      note: "Assets in the DEX pools that hold SYRUP (Uniswap on Ethereum and Base, Aerodrome), daily, from DefiLlama.",
+      chart: { kind: "columns", data: dexH, x: "day", y: "value", group: "source" } },
   ];
   const sections = [{ id: "overview", label: "SYRUP" }, { id: "markets", label: "Markets" }, { id: "holders", label: "Holders" }, { id: "model", label: "2030 model" }, { id: "data", label: "Data and method" }];
 
@@ -148,7 +153,7 @@ export default async function SyrupPage() {
           </Panel>
           <div className="method-b">
             <p><span className="text-ink-2">Buybacks.</span> Amounts and Strategic Fund holdings are Maple-reported. June, July and August 2026 are checked onchain: each matches a SYRUP withdrawal from Binance into the same wallet (0x99f0…a9ca). Maple buys on a centralised exchange, not onchain.</p>
-            <p><span className="text-ink-2">Markets.</span> Spot volume history is CoinGecko&apos;s daily total. Open interest, perpetuals volume, order book depth and DEX liquidity are a daily snapshot from CoinGecko (tickers and derivatives) and GeckoTerminal, kept from 16 Nov 2026. Headline depth counts major exchanges only; several small venues report books deeper than their whole day&apos;s volume.</p>
+            <p><span className="text-ink-2">Markets.</span> Spot volume history is CoinGecko&apos;s daily total. Today&apos;s open interest, perpetuals volume and order book depth are CoinGecko (tickers and derivatives). History: Binance open interest and volume from Binance&apos;s public data archive (data.binance.vision), OKX from its open interest and candle APIs, Hyperliquid and Bitget from their candles, DEX liquidity from DefiLlama. Order book depth has no free history; it is kept daily from 16 Nov 2026. Headline depth counts major exchanges only; several small venues report books deeper than their whole day&apos;s volume.</p>
             <p><span className="text-ink-2">Balance sheet.</span> {(n(bal?.syrup_amount) / 1e6).toFixed(1)}M SYRUP ({fmtUsd(n(bal?.syrup_usd))}) plus {fmtUsd(n(bal?.liquid_assets_usd))} in liquid assets.</p>
             <p><span className="text-ink-2">Model.</span> Stablecoin supply → yield-bearing stablecoins (share of supply) → syrupUSD (Maple&apos;s share of those) → loan book (1.26× syrupUSD, as in 2026) → loans (× utilization) → revenue (average loans over the year × take rate) → buybacks (MIP-021) → FDV (revenue × P/S) → price (FDV ÷ circulating supply). Actuals run to 31 Oct 2026; the 2026 take rate is annualised. Stablecoins compound at a constant rate to the 2030 setting. Not investment advice.</p>
           </div>
