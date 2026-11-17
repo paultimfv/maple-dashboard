@@ -268,7 +268,7 @@ export async function marginEvents() {
   return rows.map(num);
 }
 /** exchanges whose order books count toward headline depth; small venues report depth far above their own volume */
-const MAJOR = ["Binance", "Coinbase Exchange", "Upbit", "Bitvavo", "Kraken", "Bitstamp by Robinhood", "KuCoin", "Bitget", "Gate", "OKX", "Bybit", "Bithumb", "MEXC", "Crypto.com Exchange", "HTX"];
+export const MAJOR = ["Binance", "Coinbase Exchange", "Upbit", "Bitvavo", "Kraken", "Bitstamp by Robinhood", "KuCoin", "Bitget", "Gate", "OKX", "Bybit", "Bithumb", "MEXC", "Crypto.com Exchange", "HTX"];
 /** SYRUP markets, one row a day (pipeline: syrup_venues): spot depth ±2% on major exchanges, perp open interest and volume, DEX liquidity */
 export async function syrupMarkets() {
   const rows = await q(`SELECT day,
@@ -283,7 +283,7 @@ export async function syrupMarkets() {
 }
 /** SYRUP venues today, one row per exchange (pairs summed), largest volume first */
 export async function syrupVenues() {
-  const rows = await q(`SELECT venue, kind, sum(volume_usd) AS volume_usd, sum(depth_up_usd) AS depth_up_usd, sum(depth_down_usd) AS depth_down_usd,
+  const rows = await q(`SELECT venue, kind, string_agg(DISTINCT pair, ', ') AS pairs, sum(volume_usd) AS volume_usd, sum(depth_up_usd) AS depth_up_usd, sum(depth_down_usd) AS depth_down_usd,
       min(spread_pct) / 100 AS spread, sum(oi_usd) AS oi_usd, sum(liquidity_usd) AS liquidity_usd
     FROM syrup_venues WHERE day = (SELECT max(day) FROM syrup_venues) GROUP BY venue, kind ORDER BY volume_usd DESC NULLS LAST`);
   return rows.map(num);

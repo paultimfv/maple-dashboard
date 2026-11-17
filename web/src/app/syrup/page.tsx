@@ -1,4 +1,4 @@
-import { syrupPrice, syrupBuybacks, syrupSupply, ssfDaily, mapleBalanceSheet, mapleModelMonthly, syrupHolders, syrupStaked, syrupMarkets, syrupVenues } from "@/lib/queries";
+import { syrupPrice, syrupBuybacks, syrupSupply, ssfDaily, mapleBalanceSheet, mapleModelMonthly, syrupHolders, syrupStaked, syrupMarkets, syrupVenues, MAJOR } from "@/lib/queries";
 import { Panel, Table } from "@/components/charts";
 import { Explorer, Linked, Rail, type Metric } from "@/components/explorer";
 import Model from "@/components/model";
@@ -50,17 +50,33 @@ export default async function SyrupPage() {
       note: "Total supply minus what the Strategic Fund holds.", chart: { kind: "line", data: supply, x: "day", ys: ["circulating"], fmt: "raw" } },
   ];
   const vol30 = syrup.slice(-30).reduce((t, x) => t + n(x.volume_usd), 0) / Math.max(1, syrup.slice(-30).length);
+  /* open interest, depth and DEX liquidity have no free history, so the pipeline snapshots them daily from 16 Nov 2026.
+     Until there are two weeks of snapshots, each chart shows today's split by venue instead of a time series. */
+  const hist = mkts.length >= 14;
+  const short = (v: unknown) => String(v).replace(/\s*\((Futures|Derivatives)\)|\s+Futures$|\s+Exchange$/g, "").replace(/-ethereum$/, "").replace(/_/g, " ");
+  const topN = (rows: Record<string, unknown>[], keys: string[], k = 8) => {
+    const s = [...rows].sort((a, b) => n(b[keys[0]]) - n(a[keys[0]]));
+    const head = s.slice(0, k).map((r) => ({ venue: short(r.kind === "pool" ? r.pairs : r.venue), ...Object.fromEntries(keys.map((x) => [x, n(r[x])])) }));
+    const rest = s.slice(k); if (rest.length) head.push({ venue: `${rest.length} others`, ...Object.fromEntries(keys.map((x) => [x, rest.reduce((t, r) => t + n(r[x]), 0)])) });
+    return head;
+  };
+  const perps = venues.filter((x) => x.kind === "perp"), spot = venues.filter((x) => x.kind === "spot" && MAJOR.includes(String(x.venue))), pools = venues.filter((x) => x.kind === "pool");
+  const byVenue = " By venue today; a daily history starts 16 Nov 2026.";
   const market: Metric[] = [
     { id: "volume", label: "Spot volume, 24h", value: fmtUsd(n(sp?.volume_usd)), change: (() => { const a = syrup.slice(-395, -335); const v = a.reduce((t, x) => t + n(x.volume_usd), 0) / Math.max(1, a.length); return v ? vol30 / v - 1 : NaN; })(),
       note: `Spot trading across all exchanges, daily, from CoinGecko. 30-day average ${fmtUsd(vol30)}. Change compares 30-day averages a year apart.`, chart: { kind: "bars", data: syrup, x: "day", ys: ["volume_usd"] } },
     { id: "oi", label: "Open interest, perpetuals", value: fmtUsd(n(mk?.open_interest_usd)),
-      note: `Open perpetual futures positions on every venue CoinGecko tracks, daily snapshot. ${fmtUsd(n(mk?.perp_volume_usd))} traded in the last 24h.`, chart: { kind: "line", data: mkts, x: "day", ys: ["open_interest_usd"], fmt: "usd" } },
+      note: `Open perpetual futures positions, all venues CoinGecko tracks.${hist ? " Daily." : byVenue}`,
+      chart: hist ? { kind: "line", data: mkts, x: "day", ys: ["open_interest_usd"], fmt: "usd" } : { kind: "bars", data: topN(perps, ["oi_usd"]), x: "venue", ys: ["oi_usd"] } },
     { id: "perp-volume", label: "Perpetuals volume, 24h", value: fmtUsd(n(mk?.perp_volume_usd)),
-      note: "Perpetual futures traded in the last 24 hours against spot, daily snapshot.", chart: { kind: "bars", data: mkts, x: "day", ys: ["spot_volume_usd", "perp_volume_usd"] } },
+      note: `Perpetual futures traded in the last 24 hours, all venues.${hist ? " Daily, against spot." : byVenue}`,
+      chart: hist ? { kind: "bars", data: mkts, x: "day", ys: ["spot_volume_usd", "perp_volume_usd"] } : { kind: "bars", data: topN(perps, ["volume_usd"]), x: "venue", ys: ["volume_usd"] } },
     { id: "depth", label: "Order book depth, ±2%", value: `${fmtUsd(n(mk?.depth_up_usd))} / ${fmtUsd(n(mk?.depth_down_usd))}`,
-      note: "Dollars it takes to move the price 2% up / 2% down, summed over the order books on major exchanges (Binance, Coinbase, Upbit, Kraken, Bitvavo, Bitstamp and others).", chart: { kind: "line", data: mkts, x: "day", ys: ["depth_up_usd", "depth_down_usd"], fmt: "usd" } },
+      note: `Dollars it takes to move the price 2% up / 2% down, summed over the spot books on major exchanges.${hist ? " Daily." : byVenue}`,
+      chart: hist ? { kind: "line", data: mkts, x: "day", ys: ["depth_up_usd", "depth_down_usd"], fmt: "usd" } : { kind: "bars", data: topN(spot, ["depth_down_usd", "depth_up_usd"]), x: "venue", ys: ["depth_up_usd", "depth_down_usd"] } },
     { id: "dex", label: "DEX liquidity", value: fmtUsd(n(mk?.dex_liquidity_usd)),
-      note: "Assets in SYRUP pools on Ethereum DEXs (Uniswap and others), from GeckoTerminal, daily snapshot.", chart: { kind: "line", data: mkts, x: "day", ys: ["dex_liquidity_usd"], fmt: "usd" } },
+      note: `Assets in SYRUP pools on Ethereum DEXs, from GeckoTerminal.${hist ? " Daily." : " By pool today; a daily history starts 16 Nov 2026."}`,
+      chart: hist ? { kind: "line", data: mkts, x: "day", ys: ["dex_liquidity_usd"], fmt: "usd" } : { kind: "bars", data: topN(pools, ["liquidity_usd"], 5), x: "venue", ys: ["liquidity_usd"] } },
   ];
   const sections = [{ id: "overview", label: "SYRUP" }, { id: "markets", label: "Markets" }, { id: "holders", label: "Holders" }, { id: "model", label: "2030 model" }, { id: "data", label: "Data and method" }];
 

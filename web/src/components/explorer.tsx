@@ -28,7 +28,7 @@ export type Metric = {
 function lastYear(c: Chart): Chart {
   const xs = c.data.map((r) => String(r[c.x]).slice(0, 10)).sort();
   const end = xs[xs.length - 1];
-  if (!end) return c;
+  if (!end || isNaN(Date.parse(end))) return c; // categories (venues, pools), not dates
   const cut = new Date(new Date(end).getTime() - 365 * 864e5).toISOString().slice(0, 10);
   return { ...c, data: c.data.filter((r) => String(r[c.x]).slice(0, 10) >= cut) } as Chart;
 }
@@ -86,11 +86,11 @@ export function Explorer({ metrics, label, aside, sel: selIn, onSel }: { metrics
       <div className="ex-fig" aria-live="polite">
         <div className="ex-h">
           <div className="ex-t">{m.label}</div>
-          <div className="ex-range" role="group" aria-label="Time range">
+          {!isNaN(Date.parse(String(m.chart.data[0]?.[m.chart.x] ?? ""))) && <div className="ex-range" role="group" aria-label="Time range">
             {(["1y", "all"] as const).map((r) => (
               <button key={r} aria-pressed={range === r} onClick={() => setRange(r)}>{r === "1y" ? "1 year" : "All"}</button>
             ))}
-          </div>
+          </div>}
         </div>
         <div className="ex-chart"><Draw c={chart} /></div>
       </div>

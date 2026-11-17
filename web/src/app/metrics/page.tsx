@@ -154,8 +154,9 @@ export default async function BusinessPage() {
   const hm = (h: number) => `${Math.floor(h)}h ${String(Math.round((h % 1) * 60)).padStart(2, "0")}m`;
   const lending: Metric[] = [
     { id: "margin-calls", node: { fig: "d4", id: "ln" }, label: "Loans in margin call", value: `${n(md?.in_call)} of ${n(md?.loans)}`,
-      note: `A loan is in margin call when its collateral ÷ loan falls below the call level in its terms. Read hourly from Maple's API since ${sinceLong}: ${calls} calls seen, ${cured.length} cured${isFinite(cureH) ? `, ${hm(cureH)} on average` : ""}.`,
-      chart: { kind: "bars", data: mDaily, x: "day", ys: ["in_call", "calls", "cured"], fmt: "int" } },
+      note: `A loan is in margin call when its collateral ÷ loan falls below the call level in its terms. Read hourly from Maple's API since ${sinceLong}: ${calls} calls seen, ${cured.length} cured${isFinite(cureH) ? `, ${hm(cureH)} on average` : ""}.${mDaily.length >= 14 ? "" : " Chart: open loans and their collateral by asset today, until two weeks of daily history build up."}`,
+      chart: mDaily.length >= 14 ? { kind: "bars", data: mDaily, x: "day", ys: ["in_call", "calls", "cured"], fmt: "int" }
+        : { kind: "bars", data: byAsset.map((x) => ({ asset: x.asset, principal_usd: x.principal_usd, collateral_usd: x.collateral_usd })), x: "asset", ys: ["principal_usd", "collateral_usd"] } },
     { id: "lender-yield", node: { fig: "d4", id: "p" }, label: "Lender yield, syrupUSDC", value: fmtPct(n(pools.find((x) => x.pool === "syrupUSDC")?.lender_yield)),
       note: "What lenders earn: each pool token's share-price growth over the last 30 days, annualised.", chart: { kind: "line", data: yieldW, x: "day", ys: POOLS } },
     { id: "borrow-rate", node: { fig: "d4", id: "ln" }, label: "Borrower rate, open loans", value: fmtPct(bookRate),
