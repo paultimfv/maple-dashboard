@@ -2,6 +2,7 @@ import { syrupPrice, syrupBuybacks, syrupSupply, ssfDaily, mapleBalanceSheet, ma
 import { Panel, Table } from "@/components/charts";
 import { Explorer, Linked, Rail, type Metric } from "@/components/explorer";
 import Model from "@/components/model";
+import { diagramLive } from "@/lib/diagram-live";
 import { fmtUsd, fmtPct } from "@/lib/fmt";
 
 export const revalidate = 21600; // data updates daily; cache 6h so each view does not query Neon
@@ -96,7 +97,7 @@ export default async function SyrupPage() {
             <p className="hero-l">Maple&apos;s token. Each month Maple uses part of its revenue to buy SYRUP: 10% of revenue under $1.5M, 20% up to $2M, 30% above. </p>
             <p className="hero-s"><span className="live">Data to <b>{dayLong}</b></span><span>CoinGecko, Maple, Ethereum</span><span>Updated daily</span></p>
           </header>
-          <Linked label="SYRUP" metrics={metrics} figs={[{ id: "d6", title: "How revenue reaches SYRUP", lede: "Every revenue line adds up to one monthly number. MIP-021 sends a tiered share of it to buybacks.", source: "maple.finance/transparency; onchain fees and buyback wallet (Ethereum)" }]} aside={
+          <Linked label="SYRUP" metrics={metrics} figs={[{ id: "d6", subs: (await diagramLive()).d6, title: "How revenue reaches SYRUP", lede: "Every revenue line adds up to one monthly number. MIP-021 sends a tiered share of it to buybacks.", source: "maple.finance/transparency; onchain fees and buyback wallet (Ethereum)" }]} aside={
           <dl className="facts">
             <div><dt>Bought back, all time</dt><dd>{fmtUsd(bbTotal)}</dd></div>
             <div><dt>Buyback rate, last month</dt><dd>{fmtPct(n(m?.mip021_tier))}</dd></div>

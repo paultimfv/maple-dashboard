@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { usePalette } from "@/components/charts";
 import { SPECS, type ExhibitSpec, type Kind } from "@/lib/exhibits";
 
@@ -125,7 +125,7 @@ function draw(svg: SVGSVGElement, id: string, spec: ExhibitSpec, c: Colors) {
 const HEIGHT: Record<string, number> = { d1: 690, d2: 450, d3: 530, d4: 640, d5: 520, d6: 630 };
 const KEY: [Exclude<Kind, "plain" | "warn">, string][] = [["maple", "Maple"], ["syrup", "SYRUP"], ["rh", "Robinhood"], ["morpho", "Morpho / Steakhouse"], ["infra", "Infrastructure"]];
 
-export type Fig = { id: keyof typeof SPECS | string; title: string; lede?: string; source: string };
+export type Fig = { id: keyof typeof SPECS | string; title: string; lede?: string; source: string; /** live text for some boxes, by node id */ subs?: Record<string, string[]> };
 
 /** Light up one box and everything wired to it; dim the rest. */
 function trace(svg: SVGSVGElement, on: string | null, soft = false) {
@@ -160,7 +160,8 @@ export function Diagrams({ figs, focus, onNode }: { figs: Fig[]; focus?: { fig: 
   const soft = !on && focus?.fig === f.id ? focus.id : null;
   const softRef = useRef<string | null>(null);
   softRef.current = soft;
-  const spec = SPECS[f.id];
+  const subs = f.subs;
+  const spec = useMemo(() => (subs ? { ...SPECS[f.id], nodes: SPECS[f.id].nodes.map((x) => (subs[x.id] ? { ...x, sub: subs[x.id] } : x)) } : SPECS[f.id]), [f.id, subs]);
   useEffect(() => {
     const svg = ref.current;
     if (!svg) return;
@@ -169,7 +170,7 @@ export function Diagrams({ figs, focus, onNode }: { figs: Fig[]; focus?: { fig: 
     document.fonts?.ready.then(go);
     setOn(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [f.id, dark, pal.ink, pal.surface]);
+  }, [f.id, spec, dark, pal.ink, pal.surface]);
   // a redraw (fonts loading, theme) keeps whatever box is selected
   useEffect(() => { if (ref.current) trace(ref.current, on ?? soft, !on); }, [on, soft]);
   const pickNode = (e: React.SyntheticEvent) => {

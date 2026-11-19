@@ -1,5 +1,6 @@
 import { rhAum, earnAllocation, earnShare, interestWeekly, loansWeekly, shareOfUsdg, poolState, utilization, topLoans, syrupPrice, syrupBuybacks, revenueBridge, capitalOnChain, holders, mapleRevenueMonthly, mapleModelMonthly, mapleAumByPool, mapleAumLatest, syrupSupply, mapleAumReported, poolsSnapshot, mapleLenders, mapleBorrowers, ssfDaily, mapleBalanceSheet, mapleKpis, poolTable, lenderYield, collateralCover, lenderFlows, loanBook, syrupHolders, treasuryDaily, collateralByAsset, marginDaily, marginEvents, liquiditySources, liquidityDaily, liquidityInterest, poolWithdrawals } from "@/lib/queries";
 import { Panel, Table } from "@/components/charts";
+import { diagramLive } from "@/lib/diagram-live";
 import { Explorer, Linked, Rail, type Metric } from "@/components/explorer";
 import { fmtUsd, fmtPct } from "@/lib/fmt";
 import { modelLedger, aggregate } from "@/lib/model-export";
@@ -112,8 +113,11 @@ export default async function BusinessPage() {
   const psPk = peakRow(psRows, "ps_ttm");
   const psMin = Math.min(...col(psRows, "ps_ttm"));
   const aumG = yearAgo(aumRep, "day", "aum_usd");
-  const poolDay = aumPools.reduce((m, x) => (String(x.day) > m ? String(x.day) : m), "");
-  const poolNow = aumPools.filter((x) => String(x.day) === poolDay);
+  /* month-ends from aum_monthly, plus today's pool contracts as the last column, so this agrees with "Lender deposits" */
+  const todayPools = aumNow.map((x) => ({ day: String(x.day).slice(0, 10), pool: x.pool, aum_usd: x.aum_usd }));
+  const aumPoolsLive = [...aumPools, ...todayPools];
+  const poolDay = String(todayPools[0]?.day ?? "");
+  const poolNow = todayPools;
   const poolTop = poolNow.reduce<R | undefined>((a, b) => (!a || n(b.aum_usd) > n(a.aum_usd) ? b : a), undefined);
   const poolTot = poolNow.reduce((t, x) => t + n(x.aum_usd), 0);
   const loansG = yearAgo(loansHist, "month", "loans_total");
@@ -145,7 +149,7 @@ export default async function BusinessPage() {
       note: "Interest borrowers paid on open-term loans. Change compares the last 12 months with the 12 before.", chart: { kind: "bars", data: borrowers, x: "month", ys: ["interest_paid_usd"] } },
   ];
   const [byAsset, mDaily, mEvents] = await Promise.all([collateralByAsset(), marginDaily(), marginEvents()]);
-  const [liqSrc, liqDaily, liqInt, wd] = await Promise.all([liquiditySources(), liquidityDaily(), liquidityInterest(), poolWithdrawals()]);
+  const [liqSrc, liqDaily, liqInt, wd, dl] = await Promise.all([liquiditySources(), liquidityDaily(), liquidityInterest(), poolWithdrawals(), diagramLive()]);
   const WL: Record<string, string> = { instant: "Instant", "24h": "<24 hours", "3d": "<3 days", "7d": "<7 days", "30d": "<30 days", "30d+": "30+ days" };
   const WINS = ["instant", "24h", "3d", "7d", "30d", "30d+"];
   /** what a pool can return within window w (1 = instant … 6 = 30+ days): the running total of its sources up to that window */
@@ -195,7 +199,7 @@ export default async function BusinessPage() {
     { id: "aum-split", node: { fig: "d4", id: "p" }, label: "Lender deposits", value: fmtUsd(n(ar?.deposits_usd)),
       note: "Assets under management split into lender deposits and borrower collateral.", chart: { kind: "bars", data: aumRep, x: "day", ys: ["deposits_usd", "collateral_usd"] } },
     { id: "by-pool", node: { fig: "d4", id: "p" }, label: "Deposits by pool", value: fmtUsd(poolTot),
-      note: "Each pool's deposits at month-end, read from the pool contracts.", chart: { kind: "columns", data: aumPools, x: "day", y: "aum_usd", group: "pool" } },
+      note: `Each pool's deposits, read from the pool contracts: at each month-end, and on ${poolDay} for the last column and the total.`, chart: { kind: "columns", data: aumPoolsLive, x: "day", y: "aum_usd", group: "pool" } },
     { id: "loans-pool", node: { fig: "d4", id: "ln" }, label: "Loans by pool", value: fmtUsd(n(lg?.loans_total)),
       note: "Loans outstanding at month-end, by pool.", chart: { kind: "bars", data: loansHist, x: "month", ys: ["loans_syrupusdc", "loans_syrupusdt", "loans_syrupusdg", "loans_other"] } },
     { id: "utilization", node: { fig: "d4", id: "pm" }, label: "Share of deposits lent out", value: fmtPct(n(lg?.utilization)),
@@ -240,7 +244,7 @@ export default async function BusinessPage() {
 
         <section id="revenue-sec" className="blk">
           <h2 className="blk-t">Revenue</h2>
-          <Linked label="Revenue" metrics={revenue} figs={[{ id: "d6", title: "Where revenue comes from", lede: "Four sources add up to one monthly number. MIP-021 sends a tiered share of it to SYRUP buybacks.", source: "maple.finance/transparency; onchain fees (Ethereum)" }]} aside={
+          <Linked label="Revenue" metrics={revenue} figs={[{ id: "d6", subs: dl.d6, title: "Where revenue comes from", lede: "Four sources add up to one monthly number. MIP-021 sends a tiered share of it to SYRUP buybacks.", source: "maple.finance/transparency; onchain fees (Ethereum)" }]} aside={
             <dl className="facts">
               <div><dt>Interest borrowers paid, 12 months</dt><dd>{fmtUsd(n(mk?.gross_revenue_ttm))}</dd></div>
               <div><dt>Maple&apos;s cut of that interest</dt><dd>{fmtPct(n(mk?.protocol_revenue_ttm) / (n(mk?.gross_revenue_ttm) || 1))}</dd></div>
@@ -326,7 +330,7 @@ export default async function BusinessPage() {
           <h2 className="blk-t">Robinhood</h2>
           <p className="blk-l">syrupUSDG is Maple&apos;s pool for USDG. Most of it is used as collateral in Robinhood Earn on Robinhood Chain.</p>
           <Linked label="Robinhood" metrics={robinhood} figs={[
-            { id: "d5", title: "Maple and Robinhood Chain", lede: "syrupUSDG sits on Robinhood Chain as Earn collateral. The loans and the fees are on Ethereum.", source: "onchain, Robinhood Chain and Ethereum; Chainlink CCIP directory; maple-docs #157" },
+            { id: "d5", subs: dl.d5, title: "Maple and Robinhood Chain", lede: "syrupUSDG sits on Robinhood Chain as Earn collateral. The loans and the fees are on Ethereum.", source: "onchain, Robinhood Chain and Ethereum; Chainlink CCIP directory; maple-docs #157" },
             { id: "d3", title: "Where Earn's yield comes from", lede: "Earn users are paid by borrowers. A syrupUSDG borrower earns Maple's rate on the collateral and pays Earn's rate on the USDG.", source: "syrupUSDG loan manager (onchain); FalconX research" },
           ]} />
         </section>

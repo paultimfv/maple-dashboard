@@ -173,15 +173,11 @@ export async function shareOfUsdg() {
 
 // syrupUSDG utilization: loans outstanding (PrincipalOutUpdated, forward-filled) / totalAssets, daily
 export async function utilization() {
+  // same loans (loan_state) and deposits (pool_state) as the pool table; the old loan_events read froze on 9 Nov 2026 and printed >100%
   const rows = await q(`
-    SELECT p.day, p.total_assets, l.principal_out AS loans_outstanding,
-           l.principal_out / NULLIF(p.total_assets, 0) AS utilization
-    FROM pool_state p
-    LEFT JOIN LATERAL (
-      SELECT principal_out FROM loan_events WHERE kind = 'principal_out' AND otlm = $1 AND block_time::date <= p.day
-      ORDER BY block_time DESC LIMIT 1
-    ) l ON true
-    WHERE p.pool = 'syrupUSDG' ORDER BY p.day`, [OTLM_SYRUPUSDG]);
+    SELECT p.day, p.total_assets, l.loans AS loans_outstanding, least(l.loans / NULLIF(p.total_assets, 0), 1) AS utilization
+    FROM pool_state p JOIN (SELECT day, sum(principal_out_usd) AS loans FROM loan_state WHERE pool = 'syrupUSDG' GROUP BY 1) l USING (day)
+    WHERE p.pool = 'syrupUSDG' AND p.total_assets > 1e6 ORDER BY p.day`);
   return rows.map(num);
 }
 

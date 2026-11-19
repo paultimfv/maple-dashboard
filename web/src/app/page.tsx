@@ -1,4 +1,5 @@
 import { syrupPrice, syrupBuybacks, mapleModelMonthly, mapleAumReported, mapleRevenueMonthly, utilization, earnShare, stablecoinSupplyGlobal, syrupMarkets, marginDaily, syrupVenues, collateralByAsset, syrupMarketHistory } from "@/lib/queries";
+import { diagramLive } from "@/lib/diagram-live";
 import { Explorer, type Metric } from "@/components/explorer";
 import { Diagrams } from "@/components/exhibit";
 import { Mini } from "@/components/mini";
@@ -37,6 +38,8 @@ export default async function Home() {
   let run = 0;
   const bbCum = buybacks.map((x) => ({ month: x.month, total: (run += n(x.amount_usd)) }));
   const psRows = model.filter((x) => x.ps_ttm != null);
+  /* live P/S, same as the SYRUP page: today's market cap ÷ revenue over the last 12 complete months */
+  const psLive = n(sp?.mcap_usd) / (n(ttm?.ttm_revenue) || 1);
   const day = String(sp?.day ?? "").slice(0, 10);
   const asOf = day ? `${Number(day.slice(8, 10))} ${MON[Number(day.slice(5, 7)) - 1]} ${day.slice(0, 4)}` : "";
   const monY = (d: unknown) => `${MON[Number(String(d).slice(5, 7)) - 1] ?? ""} ${String(d).slice(0, 4)}`;
@@ -72,7 +75,7 @@ export default async function Home() {
           <div className="minis">
             <Mini href="/metrics#by-month" where="Key business metrics" label={`Revenue, ${monY(r?.month)}`} value={fmtUsd(n(r?.total_revenue))} data={rev} x="month" y="total_revenue" kind="bars" />
             <Mini href="/syrup#buybacks" where="SYRUP" label={`Buybacks, ${monY(bb?.month)}`} value={fmtUsd(n(bb?.amount_usd))} data={buybacks} x="month" y="amount_usd" kind="bars" />
-            <Mini href="/syrup#ps" where="SYRUP" label="Price to sales" value={`${n(last(psRows)?.ps_ttm).toFixed(1)}×`} data={psRows} x="month" y="ps_ttm" />
+            <Mini href="/syrup#ps" where="SYRUP" label="Price to sales" value={`${psLive.toFixed(1)}×`} data={[...psRows, { month: day, ps_ttm: psLive }]} x="month" y="ps_ttm" />
             <Mini href="/metrics#utilization" where="Key business metrics" label="syrupUSDG lent out" value={fmtPct(n(u?.utilization))} data={util} x="day" y="utilization" />
             <Mini href="/metrics#earn-share" where="Key business metrics" tone="rh" label="syrupUSDG share of Robinhood Earn" value={fmtPct(n(sh?.maple_share_of_earn))} data={share} x="day" y="maple_share_of_earn" />
             <Mini href="/syrup#volume" where="SYRUP" label="SYRUP spot volume, 24h" value={fmtUsd(n(sp?.volume_usd))} data={syrup.slice(-90)} x="day" y="volume_usd" kind="bars" />
@@ -84,7 +87,7 @@ export default async function Home() {
 
         <section className="blk">
           <h2 className="blk-t">How revenue reaches SYRUP</h2>
-          <Diagrams figs={[{ id: "d6", title: "Revenue to buybacks", source: "maple.finance/transparency; onchain fees and buyback wallet (Ethereum)" }]} />
+          <Diagrams figs={[{ id: "d6", subs: (await diagramLive()).d6, title: "Revenue to buybacks", source: "maple.finance/transparency; onchain fees and buyback wallet (Ethereum)" }]} />
         </section>
       </main>
     </div>
