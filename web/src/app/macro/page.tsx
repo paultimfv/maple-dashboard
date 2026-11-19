@@ -76,7 +76,7 @@ export default async function DriversPage() {
     { id: "loans", label: "Active onchain loans, all chains", value: fmtUsd(n(last(allBor)?.borrowed_usd)), change: yoy(allBor, "borrowed_usd"),
       note: "Borrowed from the 25 largest lending protocols, by protocol, weekly, from DefiLlama.", chart: { kind: "columns", data: topN(llama, "protocol", "borrowed_usd", 6), x: "day", y: "borrowed_usd", group: "group" } },
     { id: "maple-loans-share", label: "Maple's share of active onchain loans", value: fmtPct(n(last(mapleOfAll)?.maple_share)),
-      note: "Maple's loan book (total deposits) ÷ all active loans at the 25 largest lending protocols (DefiLlama) plus Maple, weekly. The share the SYRUP model uses.", chart: { kind: "line", data: mapleOfAll, x: "day", ys: ["maple_share"] } },
+      note: "Maple's loan book (total deposits) ÷ all active loans at the 25 largest lending protocols (DefiLlama) plus Maple, weekly. The SYRUP model uses the model sheet's own figure: 5.86% at 31 Oct 2026, 6.40% from 2027.", chart: { kind: "line", data: mapleOfAll, x: "day", ys: ["maple_share"] } },
     { id: "utilization", label: "Utilization, Maple vs Aave, Spark, Compound", value: fmtPct(n(ul.Maple)),
       note: `Share of deposits lent out, weekly. Maple from its pools; Aave, Spark and Compound for their USDC, USDT and DAI markets on Ethereum, from their contracts. Today: Aave ${fmtPct(n(ul.Aave))}, Spark ${fmtPct(n(ul.Spark))}, Compound ${fmtPct(n(ul.Compound))}.`,
       chart: { kind: "line", data: utilRows, x: "day", ys: ["Maple", "Aave", "Spark", "Compound"] } },
@@ -100,8 +100,8 @@ export default async function DriversPage() {
           </header>
           <Explorer label="Growth drivers" metrics={metrics} aside={
           <dl className="facts">
-            <div><dt>Model assumption, stablecoins</dt><dd>$2T in 2028, $3T in 2030</dd></div>
-            <div><dt>Where it comes from</dt><dd className="!text-[14px] !font-normal">Bessent, Nov 2025. Change it on the <a className="underline" href="/syrup#model">SYRUP page</a>.</dd></div>
+            <div><dt>Model assumption, stablecoins</dt><dd>$2T in 2030</dd></div>
+            <div><dt>Where it comes from</dt><dd className="!text-[14px] !font-normal">The $2T-by-2028 call (Standard Chartered; Bessent, Nov 2025), taken two years later. Bessent&apos;s $3T is upside: try it on the <a className="underline" href="/syrup#model">SYRUP page</a>.</dd></div>
           </dl>} />
         </section>
       </main>

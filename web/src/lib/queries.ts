@@ -737,7 +737,10 @@ export async function ethLending() {
 }
 /** onchain lending, all chains: the 25 largest lending protocols on DefiLlama, weekly (supplied = TVL + borrowed) */
 export async function llamaLending() {
-  const rows = await q(`SELECT day, protocol, supplied_usd, borrowed_usd FROM llama_lending WHERE day >= '2023-01-01' ORDER BY day`);
+  // drop weeks where DefiLlama returned only part of the protocols (15 Nov 2026 came back with 13 of 25 and read as a 60% crash)
+  const rows = await q(`WITH c AS (SELECT day, count(*) AS n FROM llama_lending GROUP BY day)
+    SELECT day, protocol, supplied_usd, borrowed_usd FROM llama_lending
+    WHERE day >= '2023-01-01' AND day IN (SELECT day FROM c WHERE n >= 0.8 * (SELECT max(n) FROM c WHERE day >= now() - interval '90 days')) ORDER BY day`);
   return rows.map(num);
 }
 /** CoinGecko 'yield-bearing-stablecoins' category: today's top 15 (all chains), daily market caps for the last year */

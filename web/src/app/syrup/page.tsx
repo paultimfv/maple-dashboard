@@ -45,15 +45,16 @@ export default async function SyrupPage() {
     { id: "mcap", node: { fig: "d6", id: "circ" }, label: "Market cap", value: fmtUsd(n(sp?.mcap_usd)), change: ago(365),
       note: "Price × circulating supply, daily.", chart: { kind: "line", data: syrup, x: "day", ys: ["mcap_usd"], fmt: "usd" } },
     { id: "ps", node: { fig: "d6", id: "rev" }, label: "Price to sales", value: `${ps.toFixed(1)}×`,
-      note: "Market cap ÷ Maple's revenue over the last 12 months, at each month-end.", chart: { kind: "line", data: model.filter((x) => x.ps_ttm != null), x: "month", ys: ["ps_ttm"], fmt: "mult" } },
+      note: `Market cap on ${dayLong} ÷ Maple's revenue over the 12 months to ${monY(ttm?.month)}. Chart: the same at each month-end. The 2030 model's 9.4× is an exit assumption, not this.`, chart: { kind: "line", data: model.filter((x) => x.ps_ttm != null), x: "month", ys: ["ps_ttm"], fmt: "mult" } },
     { id: "buybacks", node: { fig: "d6", id: "mip" }, label: `Buybacks, ${monY(bb?.month)}`, value: fmtUsd(n(bb?.amount_usd)),
       note: `SYRUP bought back each month under MIP-021, in dollars. ${fmtUsd(bbTotal)} in total.`, chart: { kind: "bars", data: buybacks, x: "month", ys: ["amount_usd"] } },
     { id: "buyback-price", node: { fig: "d6", id: "bin" }, label: "Average buyback price", value: `$${n(bb?.avg_price).toFixed(3)}`,
       note: "Dollars spent ÷ SYRUP bought, each month.", chart: { kind: "line", data: buybacks, x: "month", ys: ["avg_price"], fmt: "rate" } },
     { id: "fund", node: { fig: "d6", id: "ssf" }, label: "Held by Maple's Strategic Fund", value: `${(n(sf?.syrup_held) / 1e6).toFixed(1)}M`,
       note: "SYRUP held by the Syrup Strategic Fund, Maple-reported.", chart: { kind: "line", data: ssf, x: "day", ys: ["syrup_held"], fmt: "raw" } },
-    { id: "supply", node: { fig: "d6", id: "circ" }, label: "Circulating supply", value: `${(n(sup?.circulating) / 1e6).toFixed(0)}M`,
-      note: "Total supply minus what the Strategic Fund holds.", chart: { kind: "line", data: supply, x: "day", ys: ["circulating"], fmt: "raw" } },
+    { id: "supply", node: { fig: "d6", id: "circ" }, label: "Circulating supply", value: `${(n(sp?.mcap_usd) / (n(sp?.price_usd) || 1) / 1e6).toFixed(1)}M`,
+      note: `CoinGecko's circulating supply on ${dayLong} (market cap ÷ price). The 2030 model uses its own month-end figure, 1,166.9M on 31 Oct 2026. Total supply ${(n(sup?.total_supply) / 1e6).toFixed(0)}M.`,
+      chart: { kind: "line", data: syrup.filter((x) => n(x.price_usd) > 0).map((x) => ({ day: x.day, circulating: n(x.mcap_usd) / n(x.price_usd) })), x: "day", ys: ["circulating"], fmt: "raw" } },
   ];
   const vol30 = syrup.slice(-30).reduce((t, x) => t + n(x.volume_usd), 0) / Math.max(1, syrup.slice(-30).length);
   /* open interest, depth and DEX liquidity have no free history, so the pipeline snapshots them daily from 16 Nov 2026.
@@ -142,8 +143,8 @@ export default async function SyrupPage() {
 
         <section id="model" className="blk">
           <h2 className="blk-t">2030 model</h2>
-          <p className="blk-l">Stablecoins grow, Maple keeps its share of yield-bearing ones, lends almost all of it, and keeps a cut of the interest. Move the settings to see what SYRUP could be worth in 2030.</p>
-          <Model />
+          <p className="blk-l">Stablecoins grow to $2T by 2030, Maple keeps its share of onchain lending, lends almost all of it, and keeps a cut of the interest. Move the settings to see what SYRUP could be worth in 2030.</p>
+          <Model livePrice={n(sp?.price_usd)} liveDay={day} />
         </section>
 
         <section id="data" className="blk blk-data">
@@ -155,7 +156,7 @@ export default async function SyrupPage() {
             <p><span className="text-ink-2">Buybacks.</span> Amounts and Strategic Fund holdings are Maple-reported. June, July and August 2026 are checked onchain: each matches a SYRUP withdrawal from Binance into the same wallet (0x99f0…a9ca). Maple buys on a centralised exchange, not onchain.</p>
             <p><span className="text-ink-2">Markets.</span> Spot volume history is CoinGecko&apos;s daily total. Today&apos;s open interest, perpetuals volume and order book depth are CoinGecko (tickers and derivatives). History: Binance open interest and volume from Binance&apos;s public data archive (data.binance.vision), OKX from its open interest and candle APIs, Hyperliquid and Bitget from their candles, DEX liquidity from DefiLlama. Order book depth has no free history; it is kept daily from 16 Nov 2026. Headline depth counts major exchanges only; several small venues report books deeper than their whole day&apos;s volume.</p>
             <p><span className="text-ink-2">Balance sheet.</span> {(n(bal?.syrup_amount) / 1e6).toFixed(1)}M SYRUP ({fmtUsd(n(bal?.syrup_usd))}) plus {fmtUsd(n(bal?.liquid_assets_usd))} in liquid assets.</p>
-            <p><span className="text-ink-2">Model.</span> Stablecoin supply → yield-bearing stablecoins (share of supply) → syrupUSD (Maple&apos;s share of those) → loan book (1.26× syrupUSD, as in 2026) → loans (× utilization) → revenue (average loans over the year × take rate) → buybacks (MIP-021) → FDV (revenue × P/S) → price (FDV ÷ circulating supply). Actuals run to 31 Oct 2026; the 2026 take rate is annualised. Stablecoins compound at a constant rate to the 2030 setting. Not investment advice.</p>
+            <p><span className="text-ink-2">Model.</span> The same engine as the model sheet. Stablecoins compound to $2T in 2030 → onchain loans (10.9% of stablecoins, as in 2026) → Maple&apos;s loan book (6.40% of onchain loans) → loans (× utilization) → revenue (average loans over the year × the 2026 take rate, annualised) → buybacks (flat 20%) → market cap (revenue × 9.4) → price (market cap ÷ circulating supply, held flat). Actuals run to 31 Oct 2026. Not investment advice.</p>
           </div>
         </section>
       </main>
